@@ -1,0 +1,9 @@
+.DS_Store
+target
+.gdb_history
+*.FCStd1
+*-bak
+*-backups
+fp-info-cache
+pcb/lib/Connector_Audio.3dshape/
+pcb/gerber
