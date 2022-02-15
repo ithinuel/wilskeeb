@@ -1,4 +1,4 @@
-#![doc = include_str!("../../readme.md")]
+#![doc = include_str!("../../README.md")]
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
@@ -568,7 +568,7 @@ fn main() -> ! {
     #[allow(unused_unsafe)]
     unsafe {
         // prime the spinlock used to sync both cores by atomic-polyfill
-        (*pac::SIO::ptr()).spinlock31.write_with_zero(|w| w.bits(1));
+        (*pac::SIO::ptr()).spinlock[31].write_with_zero(|w| w.bits(1));
     }
 
     #[cfg(feature = "standalone")]

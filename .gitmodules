@@ -9,7 +9,7 @@
 	url = https://github.com/ithinuel/embassy
 [submodule "rp-hal"]
 	path = vendor/rp-hal
-	url = https://github.com/rp-rs/rp-hal.git
+	url = https://github.com/ithinuel/rp-hal.git
 [submodule "i2c-pio"]
 	path = vendor/i2c-pio-rs
 	url = https://github.com/ithinuel/i2c-pio-rs
