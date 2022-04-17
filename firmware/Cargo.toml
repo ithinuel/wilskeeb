@@ -69,8 +69,8 @@ debug = ["defmt-rtt", "panic-probe"]
 
 [patch.crates-io]
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
-embedded-hal = { git = "https://github.com/rust-embedded/embedded-hal" }
-embedded-hal-async = { git = "https://github.com/rust-embedded/embedded-hal" }
+embedded-hal = { git = "https://github.com/rust-embedded/embedded-hal", rev = "47df22ca93859935df6bfc52030103a4bcece62e" }
+embedded-hal-async = { git = "https://github.com/rust-embedded/embedded-hal", rev = "47df22ca93859935df6bfc52030103a4bcece62e" }
 
 [patch.'https://github.com/rp-rs/rp-hal']
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
