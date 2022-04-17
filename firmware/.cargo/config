@@ -18,3 +18,7 @@ rustflags = [
 
 [build]
 target = "thumbv6m-none-eabi"
+
+[env]
+DEFMT_BBQ_BUFFER_SIZE = "4096"
+DEFMT_LOG = "trace"
