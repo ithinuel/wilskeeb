@@ -3,6 +3,9 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+#[cfg(all(feature = "standalone", feature = "debug"))]
+compile_error!("Only one feature of \"standalone\" or \"debug\" must be enabled for this create");
+
 use core::{
     cell::RefCell,
     convert::TryInto,
@@ -21,8 +24,6 @@ use embedded_time::{
     duration::{Extensions as _, Microseconds},
     rate::{Extensions as _, Hertz},
 };
-
-//use embassy::{executor::Executor, util::Forever};
 
 use inter_board::{Error, Main, Secondary};
 use rp2040_hal::{
@@ -420,7 +421,7 @@ async fn cli_app<'a>(
     }
 }
 #[cfg(feature = "debug")]
-async fn cli_task(timer: &Timer, usb_serial: &UsbSerialCell, source: Source) {
+async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>, source: Source) {
     const CLI_PERIOD: Microseconds<u64> = Microseconds(1_000_000 / CLI_FREQUENCY.0);
 
     let mut next_scan_at = Microseconds(timer.get_counter()) + CLI_PERIOD;
