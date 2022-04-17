@@ -349,7 +349,7 @@ async fn usb_app<'a>(
         .composite_with_iads()
         .build();
 
-    let mut layout = Layout::new(layout::LAYERS);
+    let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
     loop {
         async_utils::_yield().await;
