@@ -4,9 +4,6 @@
 [submodule "madworm-ws2812b.pretty"]
 	path = pcb/lib/WS2812B.pretty
 	url = https://github.com/madworm/WS2812B.pretty.git
-[submodule "embassy"]
-	path = vendor/embassy
-	url = https://github.com/ithinuel/embassy
 [submodule "rp-hal"]
 	path = vendor/rp-hal
 	url = https://github.com/ithinuel/rp-hal.git
@@ -22,3 +19,6 @@
 [submodule "sh1107"]
 	path = vendor/sh1107-rs
 	url = git@github.com:ithinuel/sh1107-rs.git
+[submodule "rp2040-async-i2c"]
+	path = vendor/rp2040-async-i2c
+	url = git@github.com:ithinuel/rp2040-async-i2c.git

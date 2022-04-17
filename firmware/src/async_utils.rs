@@ -27,7 +27,7 @@ pub async fn wait_for<T: Into<Microseconds<u32>>>(timer: &Timer, delay: T) {
     }
 }
 
-pub async fn wait_until(timer: &'static Timer, end: Microseconds<u64>) -> Microseconds<u64> {
+pub async fn wait_until(timer: &Timer, end: Microseconds<u64>) -> Microseconds<u64> {
     // prevent task queue starvation.
     _yield().await;
     loop {

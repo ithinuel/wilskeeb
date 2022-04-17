@@ -7,7 +7,7 @@ use panic_persist::get_panic_message_bytes;
 #[cfg(feature = "debug")]
 use panic_probe as _;
 
-fn read_from_usb(usb_serial: &'static UsbSerialCell, buf: &mut [u8]) -> Result<usize, UsbError> {
+fn read_from_usb(usb_serial: &UsbSerialCell, buf: &mut [u8]) -> Result<usize, UsbError> {
     let serial = &mut *usb_serial.borrow_mut();
 
     match serial.read(buf) {
@@ -18,7 +18,7 @@ fn read_from_usb(usb_serial: &'static UsbSerialCell, buf: &mut [u8]) -> Result<u
 }
 
 pub fn update(
-    usb_serial: &'static UsbSerialCell,
+    usb_serial: &UsbSerialCell,
     source: Source,
     #[cfg(not(feature = "debug"))] consumer: &mut defmt_bbq::DefmtConsumer,
 ) {

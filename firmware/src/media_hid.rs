@@ -32,9 +32,9 @@ const MEDIA_DESCRIPTOR: &[u8] = &[
     0xC0        // End Collection
 ];
 
-pub fn new_class<'alloc, B>(
+pub fn new_class<'alloc, 'state, B>(
     alloc: &'alloc UsbBusAllocator<B>,
-    ui: &'static crate::ui::State,
+    ui: &'state crate::ui::State,
 ) -> MediaHIDClass<'alloc, B>
 where
     B: usb_device::bus::UsbBus,
@@ -51,7 +51,7 @@ impl MediaReport {
 
 pub struct MediaDevice(u8);
 impl MediaDevice {
-    fn new(_ui: &'static crate::ui::State) -> Self {
+    fn new(_ui: &crate::ui::State) -> Self {
         MediaDevice(0)
     }
 

@@ -5,15 +5,13 @@ use crate::{async_utils, ToUSBStack};
 use super::{ScannedEventStack, Source};
 use arrayvec::ArrayVec;
 use defmt::info;
-use embassy::traits::i2c::I2c;
+use embedded_hal_async::i2c::I2c;
 use embedded_time::{duration::Extensions, rate::Hertz};
 use futures::FutureExt;
+use rp2040_async_i2c::AsyncI2C;
 use rp2040_hal::{
     gpio::{bank0, FunctionI2C, Pin},
-    i2c::{
-        peripheral::{I2CEvent, I2CPeripheralEventIterator},
-        I2C,
-    },
+    i2c::peripheral::{I2CEvent, I2CPeripheralEventIterator},
     pac::{self, I2C0},
     timer::Timer,
 };
@@ -28,7 +26,7 @@ const TRANSACTION_TIMEOUT: u32 = 10_000;
 const COMM_TIMEOUT: u32 = 50_000;
 
 pub struct Main {
-    i2c: I2C<I2C0, Pins<FunctionI2C>>,
+    i2c: AsyncI2C<I2C0, Pins<FunctionI2C>>,
     attached: bool,
 }
 impl defmt::Format for Main {
@@ -96,7 +94,7 @@ impl Main {
         resets: &mut pac::RESETS,
         system_clock_freq: Hertz,
     ) -> Self {
-        let i2c = rp2040_hal::i2c::I2C::new_controller(
+        let i2c = rp2040_async_i2c::AsyncI2C::new(
             i2c_block,
             sda,
             scl,

@@ -22,7 +22,7 @@ use embedded_time::{
     rate::{Extensions as _, Hertz},
 };
 
-use embassy::{executor::Executor, util::Forever};
+//use embassy::{executor::Executor, util::Forever};
 
 use inter_board::{Error, Main, Secondary};
 use rp2040_hal::{
@@ -81,7 +81,7 @@ type ScannedEventStack<const SIZE: usize> =
     arraydeque::ArrayDeque<[Event; SIZE], arraydeque::behavior::Saturating>;
 type ToUSBStack<const SIZE: usize> =
     arraydeque::ArrayDeque<[(Source, Event); SIZE], arraydeque::behavior::Saturating>;
-type UsbSerialCell = RefCell<SerialPort<'static, UsbBus, [u8; 64], [u8; USB_SERIAL_TX_SZ]>>;
+type UsbSerialCell<'a> = RefCell<SerialPort<'a, UsbBus, [u8; 64], [u8; USB_SERIAL_TX_SZ]>>;
 struct BlackBoard {
     side: Source,
     ui_state: ui::State,
@@ -110,24 +110,6 @@ const USB_SERIAL_TX_SZ: usize = 1024;
 #[used]
 #[link_section = ".boot2"]
 static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
-
-/// Embassy executor.
-static EXECUTOR: Forever<Executor> = Forever::new();
-/// Global USB Allocator.
-///
-/// This instance is shared by the classes & the usb device stack.
-static USB_BUS: Forever<UsbBusAllocator<UsbBus>> = Forever::new();
-/// Global black board.
-static BLACKBOARD: Forever<BlackBoard> = Forever::new();
-/// Global timer.
-///
-/// Timer could be made Copy in the hal but it'd require a `split` method to separate it from the
-/// alarms.
-static TIMER: Forever<Timer> = Forever::new();
-/// Usb Serial class.
-///
-/// This class is used by the `cli_task` and updated by the `usb_task`.
-static USB_SERIAL: Forever<UsbSerialCell> = Forever::new();
 
 fn log_event(event: &Event, now: Microseconds<u64>, pressed_at: &mut [u64; 70]) {
     match event {
@@ -173,8 +155,7 @@ fn read_side<P: PinId>(pin: Pin<P, PullDownDisabled>) -> Source {
 /// - Scans the matrix
 /// - Debounces matrix' state
 /// - Stacks the events on the blackboard
-#[embassy::task]
-async fn scan_task(board: &'static BlackBoard, timer: &'static Timer, mut matrix: matrix::Matrix) {
+async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix) {
     const SCAN_PERIOD: Microseconds<u64> = Microseconds(1_000_000 / SCAN_FREQUENCY.0);
 
     let BlackBoard { scanned, .. } = board;
@@ -210,15 +191,14 @@ async fn scan_task(board: &'static BlackBoard, timer: &'static Timer, mut matrix
 ///   - reads events from secondary and stacks them on the blackboard;
 ///   - sends ui updates;
 /// - when acting as secondary: serves requests comming from main.
-#[embassy::task]
-async fn inter_board_task(
-    board: &'static BlackBoard,
+async fn inter_board_app(
+    board: &BlackBoard,
     system_clock_freq: Hertz,
     i2c_block: pac::I2C0,
     sda: Pin<bank0::Gpio0, PullDownDisabled>,
     scl: Pin<bank0::Gpio1, PullDownDisabled>,
     mut resets: pac::RESETS,
-    timer: &'static Timer,
+    timer: &Timer,
 ) {
     let BlackBoard {
         side,
@@ -346,14 +326,13 @@ async fn inter_board_task(
 /// - Processing the usb stack and associated protocols.
 /// - Draining the keyboard event stack from the blackboard and feeds it into the layout
 /// - Ticks the layout & generates HID reports
-#[embassy::task]
-async fn usb_task(
-    board: &'static BlackBoard,
-    timer: &'static Timer,
-    usb_bus: &'static UsbBusAllocator<UsbBus>,
-    mut keyboard_hid: keyberon::Class<'static, UsbBus, &'static ui::State>,
-    mut media_hid: media_hid::MediaHIDClass<'static, UsbBus>,
-    usb_serial: &'static UsbSerialCell,
+async fn usb_app<'a>(
+    board: &BlackBoard,
+    timer: &Timer,
+    usb_bus: &UsbBusAllocator<UsbBus>,
+    mut keyboard_hid: keyberon::Class<'a, UsbBus, &ui::State>,
+    mut media_hid: media_hid::MediaHIDClass<'a, UsbBus>,
+    usb_serial: &UsbSerialCell<'a>,
 ) {
     let BlackBoard {
         to_usb,
@@ -424,11 +403,10 @@ async fn usb_task(
 ///
 /// Handles simple request from the usb-serial interface to help manage and debug the firmware.
 /// see [`cli::update`] for a full description of the supported commands.
-#[embassy::task]
 #[cfg(feature = "standalone")]
-async fn cli_task(
-    timer: &'static Timer,
-    usb_serial: &'static UsbSerialCell,
+async fn cli_app<'a>(
+    timer: &Timer,
+    usb_serial: &UsbSerialCell<'a>,
     source: Source,
     mut consumer: defmt_bbq::DefmtConsumer,
 ) {
@@ -441,9 +419,8 @@ async fn cli_task(
         cli::update(usb_serial, source, &mut consumer);
     }
 }
-#[embassy::task]
 #[cfg(feature = "debug")]
-async fn cli_task(timer: &'static Timer, usb_serial: &'static UsbSerialCell, source: Source) {
+async fn cli_task(timer: &Timer, usb_serial: &UsbSerialCell, source: Source) {
     const CLI_PERIOD: Microseconds<u64> = Microseconds(1_000_000 / CLI_FREQUENCY.0);
 
     let mut next_scan_at = Microseconds(timer.get_counter()) + CLI_PERIOD;
@@ -462,11 +439,10 @@ async fn cli_task(timer: &'static Timer, usb_serial: &'static UsbSerialCell, sou
 /// - OLED Display
 ///
 /// Reads status from the black board & updates the UI accordingly.
-#[embassy::task]
 #[allow(clippy::type_complexity)]
-async fn ui_task(
-    _board: &'static BlackBoard,
-    timer: &'static Timer,
+async fn ui_app(
+    _board: &BlackBoard,
+    timer: &Timer,
     leds: (
         pio::PIO<pac::PIO0>,
         pio::UninitStateMachine<pio::PIO0SM0>,
@@ -585,8 +561,9 @@ fn main() -> ! {
 
     let side = read_side(pins.gpio29);
 
-    let executor = EXECUTOR.put(Executor::new());
-    let board = &*BLACKBOARD.put(BlackBoard {
+    let runtime = nostd_async::Runtime::new();
+
+    let board = BlackBoard {
         side,
         ui_state: ui::State::new(),
         usb_state: AtomicU8::new(UsbDeviceState::Default as u8),
@@ -594,9 +571,9 @@ fn main() -> ! {
         scanned: RefCell::new(ArrayDeque::new()),
         to_usb: RefCell::new(ArrayDeque::new()),
         pressed_at: RefCell::new([0; 70]),
-    });
+    };
 
-    let timer = &*TIMER.put(Timer::new(pac.TIMER, &mut pac.RESETS));
+    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
         pac.USBCTRL_REGS,
         pac.USBCTRL_DPRAM,
@@ -604,15 +581,14 @@ fn main() -> ! {
         true,
         &mut pac.RESETS,
     ));
-    let usb_bus = &*USB_BUS.put(usb_bus);
-    let keyboard_hid = keyberon::new_class(usb_bus, &board.ui_state);
-    let media_hid = media_hid::new_class(usb_bus, &board.ui_state);
+    let keyboard_hid = keyberon::new_class(&usb_bus, &board.ui_state);
+    let media_hid = media_hid::new_class(&usb_bus, &board.ui_state);
     // This needs to be the last class to be defined.
-    let usb_serial = &*USB_SERIAL.put(RefCell::new(SerialPort::new_with_store(
-        usb_bus,
+    let usb_serial = RefCell::new(SerialPort::new_with_store(
+        &usb_bus,
         [0; 64],
         [0; USB_SERIAL_TX_SZ],
-    )));
+    ));
 
     let (pio0, pio0sm0, pio0sm1, ..) = pac.PIO0.split(&mut pac.RESETS);
     let (pio1, pio1sm0, ..) = pac.PIO1.split(&mut pac.RESETS);
@@ -642,48 +618,45 @@ fn main() -> ! {
     let (oled_sda, oled_scl) = (pins.gpio16, pins.gpio17);
     let (resets, i2c, sda, scl) = (pac.RESETS, pac.I2C0, pins.gpio0, pins.gpio1);
 
-    executor.run(move |spawner| {
-        spawner
-            .spawn(inter_board_task(
-                board,
-                system_clock_freq,
-                i2c,
-                sda,
-                scl,
-                resets,
-                timer,
-            ))
-            .expect("Failed to setup i2c task");
-        spawner
-            .spawn(scan_task(board, timer, matrix))
-            .expect("Failed to setup usb serial task");
-        spawner
-            .spawn(usb_task(
-                board,
-                timer,
-                usb_bus,
-                keyboard_hid,
-                media_hid,
-                usb_serial,
-            ))
-            .expect("Failed to setup usb task");
-        spawner
-            .spawn(cli_task(
-                timer,
-                usb_serial,
-                side,
-                #[cfg(feature = "standalone")]
-                consumer,
-            ))
-            .expect("Failed to setup usb task");
-        spawner
-            .spawn(ui_task(
-                board,
-                timer,
-                (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
-                (pio1, pio1sm0, oled_sda, oled_scl),
-                system_clock_freq,
-            ))
-            .expect("Failed to setup ui_task");
-    });
+    use nostd_async::Task;
+    let mut task = Task::new(inter_board_app(
+        &board,
+        system_clock_freq,
+        i2c,
+        sda,
+        scl,
+        resets,
+        &timer,
+    ));
+    let _inter_board_hndl = task.spawn(&runtime);
+    let mut task = Task::new(scan_app(&board, &timer, matrix));
+    let _scan_hndl = task.spawn(&runtime);
+    let mut task = Task::new(usb_app(
+        &board,
+        &timer,
+        &usb_bus,
+        keyboard_hid,
+        media_hid,
+        &usb_serial,
+    ));
+    let usb_hndl = task.spawn(&runtime);
+    let mut task = Task::new(cli_app(
+        &timer,
+        &usb_serial,
+        side,
+        #[cfg(feature = "standalone")]
+        consumer,
+    ));
+    let _cli_hndl = task.spawn(&runtime);
+    let mut task = Task::new(ui_app(
+        &board,
+        &timer,
+        (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
+        (pio1, pio1sm0, oled_sda, oled_scl),
+        system_clock_freq,
+    ));
+    let _ui_hndl = task.spawn(&runtime);
+    usb_hndl.join();
+
+    unreachable!("The USB task shall never end");
 }
