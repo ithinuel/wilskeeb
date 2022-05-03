@@ -18,6 +18,7 @@ cortex-m-rt = "0.7"
 
 panic-probe = { version = "*", features = ["print-defmt"], optional = true }
 panic-persist = { version = "*", optional = true }
+panic-reset = { version = "*", optional = true }
 
 embedded-hal = { version = "=1.0.0-alpha.7", features = [] }
 embedded-hal-async = "0.0.1"
@@ -66,6 +67,7 @@ opt-level = "s"
 default = ["standalone"]
 standalone = ["defmt-bbq", "panic-persist", "defmt", "rp2040-hal/defmt"]
 debug = ["defmt-rtt", "panic-probe", "defmt", "rp2040-hal/defmt"]
+no-cli = [ "panic-reset" ]
 
 [patch.crates-io]
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }

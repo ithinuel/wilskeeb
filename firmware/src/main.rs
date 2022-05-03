@@ -3,8 +3,14 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-#[cfg(all(feature = "standalone", feature = "debug"))]
-compile_error!("Only one feature of \"standalone\" or \"debug\" must be enabled for this create");
+#[cfg(any(
+    all(feature = "standalone", feature = "debug"),
+    all(feature = "standalone", feature = "no-cli"),
+    all(feature = "debug", feature = "no-cli")
+))]
+compile_error!(
+    "Only one feature of \"no-cli\", \"standalone\" or \"debug\" must be enabled for this create"
+);
 
 use core::{
     cell::RefCell,
@@ -15,9 +21,13 @@ use core::{
 
 use arraydeque::ArrayDeque;
 
+#[cfg(not(feature = "no-cli"))]
 use defmt::info;
 #[cfg(feature = "debug")]
 use defmt_rtt as _;
+
+#[cfg(feature = "no-cli")]
+use panic_reset as _;
 
 use embedded_time::{
     duration::{Extensions as _, Microseconds},
@@ -48,11 +58,21 @@ use keyberon::{
     key_code::KbHidReport,
     layout::{CustomEvent, Event, Layout},
 };
+#[cfg(not(feature = "no-cli"))]
 use usbd_serial::SerialPort;
 
 use smart_leds::{brightness, SmartLedsWrite, RGB8};
 
+#[cfg(feature = "no-cli")]
+#[macro_use]
+mod defmt {
+    macro_rules! info {
+        ($($_:tt)*) => {{}};
+    }
+}
+
 mod async_utils;
+#[cfg(not(feature = "no-cli"))]
 mod cli;
 mod inter_board;
 mod layout;
@@ -62,7 +82,8 @@ mod ui;
 
 use async_utils::wait_until;
 
-#[derive(Debug, defmt::Format, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(feature = "no-cli"), derive(defmt::Format))]
 pub enum Source {
     Left,
     Right,
@@ -82,6 +103,7 @@ type ScannedEventStack<const SIZE: usize> =
     arraydeque::ArrayDeque<[Event; SIZE], arraydeque::behavior::Saturating>;
 type ToUSBStack<const SIZE: usize> =
     arraydeque::ArrayDeque<[(Source, Event); SIZE], arraydeque::behavior::Saturating>;
+#[cfg(not(feature = "no-cli"))]
 type UsbSerialCell<'a> = RefCell<SerialPort<'a, UsbBus, [u8; 64], [u8; USB_SERIAL_TX_SZ]>>;
 struct BlackBoard {
     side: Source,
@@ -97,12 +119,14 @@ struct BlackBoard {
 /// USB VID/PID for a generic keyboard from <https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt>
 const VID_PID: UsbVidPid = UsbVidPid(0x16c0, 0x27db);
 /// USB Serial cli update frequency.
+#[cfg(not(feature = "no-cli"))]
 const CLI_FREQUENCY: Hertz<u64> = Hertz(1_000);
 /// Matrix scan frequency.
 const SCAN_FREQUENCY: Hertz<u64> = Hertz(5_000);
 /// Key debounce period.
 const DEBOUNCE_PERIOD: Microseconds<u64> = Microseconds(1_000);
 
+#[cfg(not(feature = "no-cli"))]
 const USB_SERIAL_TX_SZ: usize = 1024;
 
 /// RP2040's second stage bootloader.
@@ -261,8 +285,8 @@ async fn inter_board_app(
                 } else {
                     let (state, delay) = match main.poll(to_usb, &timer, !side).await {
                         Ok(_) => (Either::Right(main), 1_000.microseconds()),
-                        Err(e) => {
-                            info!("Main::poll error: {}", e);
+                        Err(_e) => {
+                            info!("Main::poll error: {}", _e);
                             let (i2c_block, pins) = main.release(&mut resets);
                             is_main_half.store(false, Ordering::Relaxed);
                             (
@@ -335,7 +359,7 @@ async fn usb_app<'a>(
     usb_bus: &UsbBusAllocator<UsbBus>,
     mut keyboard_hid: keyberon::Class<'a, UsbBus, &ui::State>,
     mut media_hid: media_hid::MediaHIDClass<'a, UsbBus>,
-    usb_serial: &UsbSerialCell<'a>,
+    #[cfg(not(feature = "no-cli"))] usb_serial: &UsbSerialCell<'a>,
 ) {
     let BlackBoard {
         to_usb,
@@ -344,6 +368,7 @@ async fn usb_app<'a>(
         ..
     } = board;
 
+    #[cfg_attr(feature = "no-cli", allow(unused_mut))]
     let mut usb_dev = UsbDeviceBuilder::new(usb_bus, VID_PID)
         .manufacturer("Ithinuel.me")
         .product("Keyberon")
@@ -357,6 +382,7 @@ async fn usb_app<'a>(
     loop {
         async_utils::_yield().await;
 
+        #[cfg(not(feature = "no-cli"))]
         if let Ok(mut usb_serial) = usb_serial.try_borrow_mut() {
             if usb_dev.poll(&mut [&mut keyboard_hid, &mut media_hid, &mut *usb_serial]) {
                 keyboard_hid.poll();
@@ -364,6 +390,12 @@ async fn usb_app<'a>(
                 usb_serial.poll();
             }
         }
+        #[cfg(feature = "no-cli")]
+        if usb_dev.poll(&mut [&mut keyboard_hid, &mut media_hid]) {
+            keyboard_hid.poll();
+            media_hid.poll();
+        }
+
         let usb_state = usb_dev.state();
         board.usb_state.store(usb_state as u8, Ordering::Relaxed);
 
@@ -592,6 +624,7 @@ fn main() -> ! {
     let keyboard_hid = keyberon::new_class(&usb_bus, &board.ui_state);
     let media_hid = media_hid::new_class(&usb_bus, &board.ui_state);
     // This needs to be the last class to be defined.
+    #[cfg(not(feature = "no-cli"))]
     let usb_serial = RefCell::new(SerialPort::new_with_store(
         &usb_bus,
         [0; 64],
@@ -643,8 +676,10 @@ fn main() -> ! {
         &usb_bus,
         keyboard_hid,
         media_hid,
+        #[cfg(not(feature = "no-cli"))]
         &usb_serial,
     ));
+    #[cfg(not(feature = "no-cli"))]
     let mut cli_task = Task::new(cli_app(
         &timer,
         &usb_serial,
@@ -663,6 +698,7 @@ fn main() -> ! {
     let _inter_board_hndl = inter_board_task.spawn(&runtime);
     let _scan_hndl = scan_task.spawn(&runtime);
     let usb_hndl = usb_task.spawn(&runtime);
+    #[cfg(not(feature = "no-cli"))]
     let _cli_hndl = cli_task.spawn(&runtime);
     let _ui_hndl = ui_task.spawn(&runtime);
     usb_hndl.join();

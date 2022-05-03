@@ -1,6 +1,7 @@
 use core::cell::RefCell;
 
 use arrayvec::ArrayVec;
+#[cfg(not(feature = "no-cli"))]
 use defmt::info;
 use embedded_hal_async::i2c::I2c;
 use embedded_time::{duration::Extensions, rate::Hertz};
@@ -29,6 +30,7 @@ pub struct Main {
     i2c: AsyncI2C<I2C0, Pins<FunctionI2C>>,
     attached: bool,
 }
+#[cfg(not(feature = "no-cli"))]
 impl defmt::Format for Main {
     fn format(&self, fmt: defmt::Formatter) {
         defmt::write!(fmt, "Main {{…}}")
@@ -43,6 +45,7 @@ pub struct Secondary {
     configured: bool,
     timestamp: u32,
 }
+#[cfg(not(feature = "no-cli"))]
 impl defmt::Format for Secondary {
     fn format(&self, fmt: defmt::Formatter) {
         defmt::write!(
@@ -61,6 +64,7 @@ pub enum Error {
     BusError(rp2040_hal::i2c::Error),
     QueueFull,
 }
+#[cfg(not(feature = "no-cli"))]
 impl defmt::Format for Error {
     fn format(&self, fmt: defmt::Formatter) {
         use embedded_hal::i2c::Error as _;
@@ -258,6 +262,7 @@ impl Secondary {
 
         // serve any pending request.
         let evt = self.i2c.next();
+        #[cfg(not(feature = "no-cli"))]
         if let Some(evt) = &evt {
             info!("{}: {}", timestamp, defmt::Debug2Format(evt));
         }
