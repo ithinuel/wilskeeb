@@ -19,13 +19,13 @@ use defmt::info;
 #[cfg(feature = "debug")]
 use defmt_rtt as _;
 
-use either::Either;
 use embedded_time::{
     duration::{Extensions as _, Microseconds},
     rate::{Extensions as _, Hertz},
 };
 
 use inter_board::{Error, Main, Secondary};
+use layout::CustomAction;
 use rp2040_hal::{
     clocks::Clock,
     gpio::{bank0, Pin, PinId, Pins, PullDownDisabled},
@@ -46,7 +46,7 @@ use usb_device::{
 use keyberon::{
     debounce::Debouncer,
     key_code::KbHidReport,
-    layout::{Event, Layout},
+    layout::{CustomEvent, Event, Layout},
 };
 use usbd_serial::SerialPort;
 
@@ -201,6 +201,8 @@ async fn inter_board_app(
     mut resets: pac::RESETS,
     timer: &Timer,
 ) {
+    use either::Either;
+
     let BlackBoard {
         side,
         usb_state,
@@ -383,7 +385,12 @@ async fn usb_app<'a>(
                 );
                 layout.event(event);
             }
-            media_hid.device_mut().update(layout.tick());
+            match layout.tick() {
+                CustomEvent::Press(CustomAction::Bootldr) => {
+                    rp2040_hal::rom_data::reset_to_usb_boot(0, 0)
+                }
+                evt => media_hid.device_mut().update(evt),
+            };
 
             // update the USB interfaces.
             let keyboard_report: KbHidReport = layout.keycodes().collect();
@@ -620,7 +627,7 @@ fn main() -> ! {
     let (resets, i2c, sda, scl) = (pac.RESETS, pac.I2C0, pins.gpio0, pins.gpio1);
 
     use nostd_async::Task;
-    let mut task = Task::new(inter_board_app(
+    let mut inter_board_task = Task::new(inter_board_app(
         &board,
         system_clock_freq,
         i2c,
@@ -629,10 +636,8 @@ fn main() -> ! {
         resets,
         &timer,
     ));
-    let _inter_board_hndl = task.spawn(&runtime);
-    let mut task = Task::new(scan_app(&board, &timer, matrix));
-    let _scan_hndl = task.spawn(&runtime);
-    let mut task = Task::new(usb_app(
+    let mut scan_task = Task::new(scan_app(&board, &timer, matrix));
+    let mut usb_task = Task::new(usb_app(
         &board,
         &timer,
         &usb_bus,
@@ -640,23 +645,26 @@ fn main() -> ! {
         media_hid,
         &usb_serial,
     ));
-    let usb_hndl = task.spawn(&runtime);
-    let mut task = Task::new(cli_app(
+    let mut cli_task = Task::new(cli_app(
         &timer,
         &usb_serial,
         side,
         #[cfg(feature = "standalone")]
         consumer,
     ));
-    let _cli_hndl = task.spawn(&runtime);
-    let mut task = Task::new(ui_app(
+    let mut ui_task = Task::new(ui_app(
         &board,
         &timer,
         (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
         (pio1, pio1sm0, oled_sda, oled_scl),
         system_clock_freq,
     ));
-    let _ui_hndl = task.spawn(&runtime);
+
+    let _inter_board_hndl = inter_board_task.spawn(&runtime);
+    let _scan_hndl = scan_task.spawn(&runtime);
+    let usb_hndl = usb_task.spawn(&runtime);
+    let _cli_hndl = cli_task.spawn(&runtime);
+    let _ui_hndl = ui_task.spawn(&runtime);
     usb_hndl.join();
 
     unreachable!("The USB task shall never end");

@@ -98,15 +98,18 @@ impl keyberon::hid::HidDevice for MediaDevice {
         _report_type: ReportType,
         _report_id: u8,
         _data: &[u8],
-    ) -> Result<(), ()> {
+    ) -> Result<(), keyberon::hid::Error> {
         Ok(())
-        //Err(())
     }
 
-    fn get_report(&mut self, report_type: ReportType, _report_id: u8) -> Result<&[u8], ()> {
+    fn get_report(
+        &mut self,
+        report_type: ReportType,
+        _report_id: u8,
+    ) -> Result<&[u8], keyberon::hid::Error> {
         match report_type {
             ReportType::Input => Ok(core::slice::from_ref(&self.0)),
-            _ => Err(()),
+            _ => Err(keyberon::hid::Error),
         }
     }
 }
