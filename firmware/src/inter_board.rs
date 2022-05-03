@@ -1,8 +1,5 @@
 use core::cell::RefCell;
 
-use crate::{async_utils, ToUSBStack};
-
-use super::{ScannedEventStack, Source};
 use arrayvec::ArrayVec;
 use defmt::info;
 use embedded_hal_async::i2c::I2c;
@@ -15,6 +12,9 @@ use rp2040_hal::{
     pac::{self, I2C0},
     timer::Timer,
 };
+
+use super::{ScannedEventStack, Source};
+use crate::{async_utils, ToUSBStack};
 
 type Pins<Mode> = (Pin<bank0::Gpio0, Mode>, Pin<bank0::Gpio1, Mode>);
 type I2CPeriph = I2CPeripheralEventIterator<I2C0, Pins<FunctionI2C>>;
@@ -55,7 +55,6 @@ impl defmt::Format for Secondary {
         )
     }
 }
-//#[derive(Debug)]
 pub enum Error {
     BusIdle,
     Timeout,

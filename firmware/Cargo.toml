@@ -26,7 +26,7 @@ embedded-graphics = "0.7.0"
 nb = "*"
 either = { version = "*", default-features = false }
 
-rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", features = ["rt", "defmt", "eh1_0_alpha"] }
+rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", features = ["rt", "eh1_0_alpha"] }
 rp2040-boot2 = { git = "https://github.com/rp-rs/rp2040-boot2-rs", branch = "main" }
 rp2040-async-i2c = { git = "https://github.com/ithinuel/rp2040-async-i2c" }
 
@@ -43,7 +43,7 @@ usb-device = "*"
 usbd-serial = "*"
 keyberon = { git = "https://github.com/TeXitoi/keyberon.git" }
 
-defmt = "0.3.0"
+defmt = { version = "0.3.0", optional = true }
 defmt-rtt = { version = "*", optional = true }
 defmt-bbq = { version = "*", optional = true }
 bbqueue = { version = "*", features = ["thumbv6"] }
@@ -64,8 +64,8 @@ opt-level = "s"
 
 [features]
 default = ["standalone"]
-standalone = ["defmt-bbq", "panic-persist"]
-debug = ["defmt-rtt", "panic-probe"]
+standalone = ["defmt-bbq", "panic-persist", "defmt", "rp2040-hal/defmt"]
+debug = ["defmt-rtt", "panic-probe", "defmt", "rp2040-hal/defmt"]
 
 [patch.crates-io]
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }

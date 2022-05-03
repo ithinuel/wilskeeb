@@ -9,10 +9,12 @@ use keyberon::{
 pub enum CustomAction {
     PrevTrack,
     NextTrack,
+    Bootldr,
 }
 
 const PREVTRACK: Action<CustomAction> = Action::Custom(CustomAction::PrevTrack);
 const NEXTTRACK: Action<CustomAction> = Action::Custom(CustomAction::NextTrack);
+const BOOTLDR: Action<CustomAction> = Action::Custom(CustomAction::Bootldr);
 
 /// ```text
 /// . . . . . .         . . . . . .
@@ -44,7 +46,7 @@ pub static LAYERS: keyberon::layout::Layers<14, 5, 4, CustomAction> = [
         [NoOp,      NoOp,       NoOp,   NoOp,    NoOp,      NoOp,     NoOp,      NoOp,      NoOp,      NoOp,      NoOp,     NoOp,        NoOp,        NoOp],
         [NoOp,      NoOp,       NoOp,   NoOp,    NoOp,      NoOp,     NoOp,      NoOp,      NoOp,      NoOp,      NoOp,     NoOp,        NoOp,        NoOp],
     ], [
-        [NoOp,      NoOp,       NoOp,   NoOp,    NoOp,      NoOp,     NoOp,      NoOp,      NoOp,      NoOp,      NoOp,     NoOp,        NoOp,        NoOp],
+        [BOOTLDR,   NoOp,       NoOp,   NoOp,    NoOp,      NoOp,     NoOp,      NoOp,      NoOp,      NoOp,      NoOp,     NoOp,        NoOp,        NoOp],
         [NoOp,      NoOp,       NoOp,   NoOp,    NoOp,      NoOp,     NoOp,      NoOp,      NoOp,      k(Kp7),    k(Kp8),   k(Kp9),      NoOp,        NoOp],
         [NoOp,      NoOp,       NoOp,   NoOp,    NoOp,      NoOp,     d(0),      NoOp,      NoOp,      k(Kp4),    k(Kp5),   k(Kp6),      NoOp,        NoOp],
         [NoOp,      NoOp,       NoOp,   NoOp,    NoOp,      NoOp,     NoOp,      NoOp,      NoOp,      k(Kp1),    k(Kp2),   k(Kp3),      NoOp,        NoOp],
