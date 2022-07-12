@@ -32,15 +32,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aligned"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a785a543aea40f5e4e2e93bb2655d31bc21bb391fff65697150973e383f16bb"
-dependencies = [
- "as-slice",
-]
-
-[[package]]
 name = "arraydeque"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -51,18 +42,6 @@ name = "arrayvec"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
-
-[[package]]
-name = "as-slice"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45403b49e3954a4b8428a0ac21a4b7afadccf92bfd96273f1a58cd4812496ae0"
-dependencies = [
- "generic-array 0.12.4",
- "generic-array 0.13.3",
- "generic-array 0.14.5",
- "stable_deref_trait",
-]
 
 [[package]]
 name = "atomic-polyfill"
@@ -118,10 +97,9 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "bbqueue"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd3baa8859d1a4c7411039a75c0599a4640ef1c9a8fc811e4325b00e6cfe0a55"
+source = "git+https://github.com/ithinuel/bbqueue.git?branch=bump-to-cortex-m-0.7.0#c02ef7ec97e2d9736eda0aaee3d26ca582ebae84"
 dependencies = [
- "cortex-m 0.6.7",
+ "cortex-m",
  "defmt",
 ]
 
@@ -184,19 +162,6 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 
 [[package]]
 name = "cortex-m"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9075300b07c6a56263b9b582c214d0ff037b00d45ec9fde1cc711490c56f1bb9"
-dependencies = [
- "aligned",
- "bare-metal 0.2.5",
- "bitfield",
- "cortex-m 0.7.5",
- "volatile-register",
-]
-
-[[package]]
-name = "cortex-m"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd20d4ac4aa86f4f75f239d59e542ef67de87cce2c282818dc6e84155d3ea126"
@@ -253,7 +218,7 @@ checksum = "95da181745b56d4bd339530ec393508910c909c784e8962d15d722bacf0bcbcd"
 dependencies = [
  "bare-metal 1.0.0",
  "cfg-if 1.0.0",
- "cortex-m 0.7.5",
+ "cortex-m",
  "riscv",
 ]
 
@@ -335,7 +300,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c937dfd3aa385c0ceb497b513f23f9dea75c884dc12ac18cae2ccb7675c7a327"
 dependencies = [
  "bbqueue",
- "cortex-m 0.7.5",
+ "cortex-m",
  "defmt",
 ]
 
@@ -535,34 +500,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "generic-array"
-version = "0.12.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffdf9f34f1447443d37393cc6c2b8313aebddcd96906caf34e54c68d8e57d7bd"
-dependencies = [
- "typenum",
-]
-
-[[package]]
-name = "generic-array"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f797e67af32588215eaaab8327027ee8e71b9dd0b2b26996aedf20c030fce309"
-dependencies = [
- "typenum",
-]
-
-[[package]]
-name = "generic-array"
-version = "0.14.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd48d33ec7f05fbfa152300fdad764757cbded343c1aa1cff2fbaf4134851803"
-dependencies = [
- "typenum",
- "version_check",
-]
-
-[[package]]
 name = "gif"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -607,7 +544,7 @@ dependencies = [
 name = "i2c-pio"
 version = "0.3.0"
 dependencies = [
- "cortex-m 0.7.5",
+ "cortex-m",
  "embedded-hal 0.2.7",
  "embedded-time",
  "nb 1.0.0",
@@ -759,7 +696,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "042bc38e89b096632e17a60d09634ffaedf97669c3e58acdf49162344bf654eb"
 dependencies = [
  "bare-metal 0.2.5",
- "cortex-m 0.7.5",
+ "cortex-m",
 ]
 
 [[package]]
@@ -878,7 +815,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32bb382689ecd2c4d2d4df9fd56700ba8d43b7b31cca11018cc0e6f8aef39fd5"
 dependencies = [
- "cortex-m 0.7.5",
+ "cortex-m",
 ]
 
 [[package]]
@@ -887,7 +824,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ab1f00eac22bd18f8e5cae9555f2820b3a0c166b5b556ee3e203746ea6dcf3a"
 dependencies = [
- "cortex-m 0.7.5",
+ "cortex-m",
  "defmt",
 ]
 
@@ -897,7 +834,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6cf1ff2a5b1a478dd94572aa43476b6630e72071cbd016985003ad3903a3a4f5"
 dependencies = [
- "cortex-m 0.7.5",
+ "cortex-m",
 ]
 
 [[package]]
@@ -1198,7 +1135,7 @@ dependencies = [
 name = "rp2040-hal"
 version = "0.5.0"
 dependencies = [
- "cortex-m 0.7.5",
+ "cortex-m",
  "cortex-m-rt",
  "critical-section",
  "defmt",
@@ -1233,7 +1170,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13a6106d5db01c7171a39c1f7696780912db9b42fe7ac722db60069c8904ea7c"
 dependencies = [
- "cortex-m 0.7.5",
+ "cortex-m",
  "cortex-m-rt",
  "vcell",
 ]
@@ -1380,12 +1317,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "typenum"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1449,7 +1380,7 @@ dependencies = [
  "arraydeque",
  "arrayvec",
  "bbqueue",
- "cortex-m 0.7.5",
+ "cortex-m",
  "cortex-m-rt",
  "defmt",
  "defmt-bbq",
@@ -1505,7 +1436,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 name = "ws2812-pio"
 version = "0.3.0"
 dependencies = [
- "cortex-m 0.7.5",
+ "cortex-m",
  "embedded-hal 0.2.7",
  "embedded-time",
  "nb 1.0.0",
