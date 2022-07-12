@@ -67,7 +67,7 @@ pub enum Error {
 #[cfg(not(feature = "no-cli"))]
 impl defmt::Format for Error {
     fn format(&self, fmt: defmt::Formatter) {
-        use embedded_hal::i2c::Error as _;
+        use embedded_hal_async::i2c::Error as _;
         use rp2040_hal::i2c::Error;
         match self {
             Self::BusIdle => defmt::write!(fmt, "BusIdle"),

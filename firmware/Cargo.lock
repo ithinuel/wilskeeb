@@ -602,7 +602,7 @@ dependencies = [
 
 [[package]]
 name = "i2c-pio"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cortex-m 0.7.4",
  "embedded-hal 0.2.7",
@@ -1187,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "rp2040-hal"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cortex-m 0.7.4",
  "cortex-m-rt",
@@ -1479,7 +1479,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "ws2812-pio"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cortex-m 0.7.4",
  "embedded-hal 0.2.7",

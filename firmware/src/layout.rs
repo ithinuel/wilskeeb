@@ -32,7 +32,7 @@ pub static LAYERS: keyberon::layout::Layers<14, 5, 4, CustomAction> = [
         [k(Tab),    k(Q),       k(W),   k(E),    k(R),      k(T),     NoOp,      NoOp,      k(Y),      k(U),      k(I),     k(O),        k(P),        k(RBracket)],
         [k(LShift), k(A),       k(S),   k(D),    k(F),      k(G),     d(3),      l(2),      k(H),      k(J),      k(K),     k(L),        k(SColon),   k(Quote)],
         [k(LCtrl),  k(Z),       k(X),   k(C),    k(V),      k(B),     k(Insert), k(Delete), k(N),      k(M),      k(Comma), k(Dot),      k(Slash),    k(NonUsHash)],
-        [k(Pause),  k(PScreen), NoOp,   k(LAlt), k(Escape), k(Enter), k(Space),  k(BSpace), l(1),      k(RAlt),   k(LGui),  k(Minus),    k(Equal),    k(Menu)],
+        [k(Pause),  k(PScreen), NoOp,   k(LAlt), k(Escape), k(Enter), k(Space),  k(BSpace), l(1),      k(RAlt),   k(LGui),  k(Minus),    k(Equal),    k(ScrollLock)],
     ], [
         [NoOp,      k(F1),      k(F2),  k(F3),   k(F4),     k(F5),    NoOp,      NoOp,      NoOp,      NoOp,      NoOp,     NoOp,        NoOp,        NoOp],
         [NoOp,      k(F6),      k(F7),  k(F9),   k(F9),     k(F10),   NoOp,      NoOp,      k(PgUp),   k(Home),   k(Up),    k(End),      NoOp,        NoOp],
