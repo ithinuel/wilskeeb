@@ -57,6 +57,7 @@ use keyberon::{
     debounce::Debouncer,
     key_code::KbHidReport,
     layout::{CustomEvent, Event, Layout},
+    Class,
 };
 #[cfg(not(feature = "no-cli"))]
 use usbd_serial::SerialPort;
@@ -357,7 +358,7 @@ async fn usb_app<'a>(
     board: &BlackBoard,
     timer: &Timer,
     usb_bus: &UsbBusAllocator<UsbBus>,
-    mut keyboard_hid: keyberon::Class<'a, UsbBus, &ui::State>,
+    mut keyboard_hid: Class<'a, UsbBus, &ui::State>,
     mut media_hid: media_hid::MediaHIDClass<'a, UsbBus>,
     #[cfg(not(feature = "no-cli"))] usb_serial: &UsbSerialCell<'a>,
 ) {
