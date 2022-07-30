@@ -43,6 +43,9 @@ nostd_async = { version = "0.6.0", features = ["cortex_m"] }
 usb-device = "*"
 usbd-serial = "*"
 keyberon = { git = "https://github.com/TeXitoi/keyberon.git" }
+usbd-human-interface-device = "*"
+frunk = { version = "0.4", default-features = false }
+num_enum = { version = "*", default-features = false }
 
 defmt = { version = "0.3.0", optional = true }
 defmt-rtt = { version = "*", optional = true }
@@ -57,7 +60,7 @@ num-integer = { version = "0.1.44", default-features = false }
 embedded-graphics-simulator = "*"
 
 [profile.release]
-debug = 2
+debug = 1 # skip line info for cleaner probe-run output
 lto = true
 codegen-units = 1
 panic = "abort"

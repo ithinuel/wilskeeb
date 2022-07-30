@@ -1,7 +1,5 @@
 {
-    "markdownlint.config": {
-        "MD013": {
-            "tables": false
-        }
-    }
+    "rust-analyzer.procMacro.enable": true,
+    "rust-analyzer.cargo.features": ["debug"],
+    "rust-analyzer.checkOnSave.noDefaultFeatures": true
 }

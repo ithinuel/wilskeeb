@@ -21,6 +21,7 @@ use core::{
 
 use arraydeque::ArrayDeque;
 
+use arrayvec::ArrayVec;
 #[cfg(not(feature = "no-cli"))]
 use defmt::info;
 #[cfg(feature = "debug")]
@@ -55,9 +56,14 @@ use usb_device::{
 
 use keyberon::{
     debounce::Debouncer,
-    key_code::KbHidReport,
     layout::{CustomEvent, Event, Layout},
-    Class,
+};
+use num_enum::FromPrimitive;
+use usbd_human_interface_device::{
+    device::keyboard::NKROBootKeyboardInterface,
+    hid_class::{UsbHidClass, UsbHidClassBuilder},
+    page::Keyboard,
+    UsbHidError,
 };
 #[cfg(not(feature = "no-cli"))]
 use usbd_serial::SerialPort;
@@ -72,16 +78,17 @@ mod defmt {
     }
 }
 
-mod async_utils;
 #[cfg(not(feature = "no-cli"))]
 mod cli;
 mod inter_board;
 mod layout;
 mod matrix;
-mod media_hid;
-mod ui;
+//mod ui;
+mod utils_async;
+mod utils_time;
 
-use async_utils::wait_until;
+use inter_board::{Error, Main, Secondary};
+use layout::CustomAction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(not(feature = "no-cli"), derive(defmt::Format))]
@@ -104,11 +111,17 @@ type ScannedEventStack<const SIZE: usize> =
     arraydeque::ArrayDeque<[Event; SIZE], arraydeque::behavior::Saturating>;
 type ToUSBStack<const SIZE: usize> =
     arraydeque::ArrayDeque<[(Source, Event); SIZE], arraydeque::behavior::Saturating>;
+type MyUsbHidClass<'a> = UsbHidClass<
+    UsbBus,
+    frunk::hlist::HCons<
+        NKROBootKeyboardInterface<'a, rp2040_hal::usb::UsbBus, utils_time::MyClock<'a>>,
+        frunk::hlist::HNil,
+    >,
+>;
 #[cfg(not(feature = "no-cli"))]
 type UsbSerialCell<'a> = RefCell<SerialPort<'a, UsbBus, [u8; 64], [u8; USB_SERIAL_TX_SZ]>>;
 struct BlackBoard {
     side: Source,
-    ui_state: ui::State,
     /// The use of that field is a bit ugly but `UsbDeviceState` is `repr(u8)` so it should be ok.
     usb_state: AtomicU8,
     is_main_half: AtomicBool,
@@ -137,11 +150,16 @@ const USB_SERIAL_TX_SZ: usize = 1024;
 #[link_section = ".boot2"]
 static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
+defmt::timestamp!("{=u32:us}", {
+    // NOTE(interrupt-safe) single instruction volatile read operation
+    unsafe { pac::Peripherals::steal().TIMER.timerawl.read().bits() }
+});
+
 fn log_event(event: &Event, now: Microseconds<u64>, pressed_at: &mut [u64; 70]) {
     match event {
         Event::Press(row, col) => {
             let idx = usize::from(row * 14 + col);
-            info!("{}", defmt::Debug2Format(event));
+            info!("Usb  : {}", defmt::Debug2Format(event));
             if idx < pressed_at.len() {
                 pressed_at[idx] = now.0;
             }
@@ -150,12 +168,12 @@ fn log_event(event: &Event, now: Microseconds<u64>, pressed_at: &mut [u64; 70]) 
             let idx = usize::from(row * 14 + col);
             if idx < pressed_at.len() {
                 info!(
-                    "{}: {}",
+                    "Usb  : {}: {}",
                     defmt::Debug2Format(event),
                     now.0 - pressed_at[idx]
                 );
             } else {
-                info!("{}: out of bound", defmt::Debug2Format(event));
+                info!("Usb  : {}: out of bound", defmt::Debug2Format(event));
             }
         }
     }
@@ -197,13 +215,13 @@ async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix)
 
     let mut now = Microseconds(timer.get_counter());
     loop {
-        now = wait_until(timer, now + SCAN_PERIOD).await;
+        now = utils_async::wait_until(timer, now + SCAN_PERIOD).await;
         let mut scanned = scanned.borrow_mut();
         for event in debouncer.events(matrix.get()) {
             // TODO: if for some reason the queue isn't processed.
             // shall we drop the oldest or ignore the most recent?
             let _ = scanned.push_back(event);
-            info!("{:?}", defmt::Debug2Format(&event));
+            info!("Scan: {}", defmt::Debug2Format(&event));
         }
         drop(scanned);
     }
@@ -264,19 +282,10 @@ async fn inter_board_app(
         timer.get_counter_low(),
     ));
 
-    let mut ts = 0;
     // wait for usb configured state or an i2c sync packet
     loop {
         let usb_state = usb_state.load(Ordering::Relaxed);
         let timestamp = timer.get_counter_low();
-        if timestamp.wrapping_sub(ts) >= 1_000_000 {
-            info!(
-                "{}: {}",
-                timestamp,
-                if state.is_left() { "Secondary" } else { "Main" }
-            );
-            ts = timestamp;
-        }
         state = match state {
             Either::Right(mut main) => {
                 if usb_state != (UsbDeviceState::Configured as u8) {
@@ -287,7 +296,7 @@ async fn inter_board_app(
                     let (state, delay) = match main.poll(to_usb, &timer, !side).await {
                         Ok(_) => (Either::Right(main), 1_000.microseconds()),
                         Err(_e) => {
-                            info!("Main::poll error: {}", _e);
+                            info!("Inter: Main::poll error: {}", _e);
                             let (i2c_block, pins) = main.release(&mut resets);
                             is_main_half.store(false, Ordering::Relaxed);
                             (
@@ -305,13 +314,13 @@ async fn inter_board_app(
                     let mut to_usb = to_usb.borrow_mut();
                     while let Some(evt) = scanned.pop_front() {
                         if let Err(_) = to_usb.push_back((side, evt)) {
-                            info!("Main: to_usb push failed");
+                            info!("Inter: Main: to_usb push failed");
                             break;
                         }
                     }
                     drop(scanned);
                     drop(to_usb);
-                    async_utils::wait_for(timer, delay).await;
+                    utils_async::wait_for(timer, delay).await;
                     state
                 }
             }
@@ -319,7 +328,7 @@ async fn inter_board_app(
                 let timestamp = timer.get_counter_low();
                 match secondary.serve(scanned, timestamp) {
                     Err(Error::BusIdle) if usb_state == (UsbDeviceState::Configured as u8) => {
-                        info!("Configured yay");
+                        info!("Inter: USB Configured");
 
                         let (i2c_block, pins) = secondary.release(&mut resets);
                         is_main_half.store(true, Ordering::Relaxed);
@@ -329,7 +338,7 @@ async fn inter_board_app(
                     // transaction) then reset the bus to clear any unexpected clock stretching.
                     Err(Error::BusIdle) | Err(Error::Timeout) => {
                         let (i2c_block, pins) = secondary.release(&mut resets);
-                        async_utils::wait_for(timer, 1_000.microseconds()).await;
+                        utils_async::wait_for(timer, 1_000.microseconds()).await;
                         Either::Left(Secondary::new(
                             i2c_block,
                             pins,
@@ -339,7 +348,7 @@ async fn inter_board_app(
                     }
                     _ => {
                         // lets be nice
-                        async_utils::_yield().await;
+                        utils_async::_yield().await;
                         Either::Left(secondary)
                     }
                 }
@@ -358,8 +367,7 @@ async fn usb_app<'a>(
     board: &BlackBoard,
     timer: &Timer,
     usb_bus: &UsbBusAllocator<UsbBus>,
-    mut keyboard_hid: Class<'a, UsbBus, &ui::State>,
-    mut media_hid: media_hid::MediaHIDClass<'a, UsbBus>,
+    mut keyboard_hid: MyUsbHidClass<'_>,
     #[cfg(not(feature = "no-cli"))] usb_serial: &UsbSerialCell<'a>,
 ) {
     let BlackBoard {
@@ -372,7 +380,7 @@ async fn usb_app<'a>(
     #[cfg_attr(feature = "no-cli", allow(unused_mut))]
     let mut usb_dev = UsbDeviceBuilder::new(usb_bus, VID_PID)
         .manufacturer("Ithinuel.me")
-        .product("Keyberon")
+        .product("WilsKeeb")
         .serial_number(env!("CARGO_PKG_VERSION"))
         .max_packet_size_0(64)
         .composite_with_iads()
@@ -381,20 +389,18 @@ async fn usb_app<'a>(
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
     loop {
-        async_utils::_yield().await;
+        utils_async::_yield().await;
 
         #[cfg(not(feature = "no-cli"))]
         if let Ok(mut usb_serial) = usb_serial.try_borrow_mut() {
-            if usb_dev.poll(&mut [&mut keyboard_hid, &mut media_hid, &mut *usb_serial]) {
+            if usb_dev.poll(&mut [&mut keyboard_hid, &mut *usb_serial]) {
                 keyboard_hid.poll();
-                media_hid.poll();
                 usb_serial.poll();
             }
         }
         #[cfg(feature = "no-cli")]
-        if usb_dev.poll(&mut [&mut keyboard_hid, &mut media_hid]) {
+        if usb_dev.poll(&mut [&mut keyboard_hid]) {
             keyboard_hid.poll();
-            media_hid.poll();
         }
 
         let usb_state = usb_dev.state();
@@ -422,20 +428,27 @@ async fn usb_app<'a>(
                 CustomEvent::Press(CustomAction::Bootldr) => {
                     rp2040_hal::rom_data::reset_to_usb_boot(0, 0)
                 }
-                evt => media_hid.device_mut().update(evt),
+                _ => {} //evt => media_hid.device_mut().update(evt),
             };
 
             // update the USB interfaces.
-            let keyboard_report: KbHidReport = layout.keycodes().collect();
-            // Setup the report for the control channel
-            keyboard_hid
-                .device_mut()
-                .set_keyboard_report(keyboard_report.clone());
-            // Trigger the interrupt_in channel.
-            let _ = keyboard_hid.write(keyboard_report.as_bytes());
+            let keycodes: ArrayVec<_, 70> = layout
+                .keycodes()
+                .map(|k| Keyboard::from_primitive(k as u8))
+                .collect();
 
-            let media_report = media_hid.device_mut().report();
-            let _ = media_hid.write(media_report.as_bytes());
+            // Setup the report for the control channel
+            match keyboard_hid.interface().write_report(&keycodes) {
+                Err(UsbHidError::WouldBlock) | Err(UsbHidError::Duplicate) | Ok(_) => {}
+                Err(e) => panic!("Failed to write keyboard report: {:?}", e),
+            }
+            match keyboard_hid.interface().tick() {
+                Err(UsbHidError::WouldBlock) | Ok(_) => {}
+                Err(e) => panic!("Failed to process keyboard tick: {:?}", e),
+            }
+
+            // Trigger the interrupt_in channel.
+            //let _ = keyboard_hid.write(keyboard_report.as_bytes());
         }
     }
 }
@@ -525,7 +538,7 @@ async fn ui_app(
     );
     let mut timestamp = Microseconds(timer.get_counter());
     for wheel_pos in (0..=255).cycle() {
-        let now = async_utils::wait_until(timer, timestamp + 40_000.microseconds()).await;
+        let now = utils_async::wait_until(timer, timestamp + 40_000.microseconds()).await;
 
         neopixel
             .write(brightness(once(wheel(wheel_pos)), 25))
@@ -606,7 +619,6 @@ fn main() -> ! {
 
     let board = BlackBoard {
         side,
-        ui_state: ui::State::new(),
         usb_state: AtomicU8::new(UsbDeviceState::Default as u8),
         is_main_half: AtomicBool::new(false),
         scanned: RefCell::new(ArrayDeque::new()),
@@ -622,8 +634,12 @@ fn main() -> ! {
         true,
         &mut pac.RESETS,
     ));
-    let keyboard_hid = keyberon::new_class(&usb_bus, &board.ui_state);
-    let media_hid = media_hid::new_class(&usb_bus, &board.ui_state);
+
+    let theclock = utils_time::MyClock(&timer);
+    let keyboard_hid = UsbHidClassBuilder::new()
+        .add_interface(NKROBootKeyboardInterface::default_config(&theclock))
+        .build(&usb_bus);
+
     // This needs to be the last class to be defined.
     #[cfg(not(feature = "no-cli"))]
     let usb_serial = RefCell::new(SerialPort::new_with_store(
@@ -676,7 +692,6 @@ fn main() -> ! {
         &timer,
         &usb_bus,
         keyboard_hid,
-        media_hid,
         #[cfg(not(feature = "no-cli"))]
         &usb_serial,
     ));
