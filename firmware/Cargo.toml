@@ -40,7 +40,7 @@ ws2812-pio = { git = "https://github.com/ithinuel/ws2812-pio-rs" }
 futures = { version = "0.3.19", default-features = false, features = ["async-await"] }
 nostd_async = { version = "0.6.0", features = ["cortex_m"] }
 
-usb-device = "*"
+usb-device = "0.2.8"
 usbd-serial = "*"
 keyberon = { git = "https://github.com/TeXitoi/keyberon.git" }
 usbd-human-interface-device = "*"
@@ -75,6 +75,7 @@ no-cli = [ "panic-reset" ]
 [patch.crates-io]
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
 bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }
+usb-device = { git = "https://github.com/rust-embedded-community/usb-device" }
 
 [patch.'https://github.com/rp-rs/rp-hal']
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }

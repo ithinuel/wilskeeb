@@ -256,13 +256,18 @@ async fn inter_board_app(
         timer.get_counter_low(),
     ));
 
+    let configured = [
+        (UsbDeviceState::Configured as u8),
+        (UsbDeviceState::Suspend as u8),
+    ];
+
     // wait for usb configured state or an i2c sync packet
     loop {
         let usb_state = usb_state.load(Ordering::Relaxed);
         let timestamp = timer.get_counter_low();
         state = match state {
             Either::Right(mut main) => {
-                if usb_state != (UsbDeviceState::Configured as u8) {
+                if !configured.contains(&usb_state) {
                     let (i2c_block, pins) = main.release(&mut resets);
                     is_main_half.store(false, Ordering::Relaxed);
                     defmt::info!("Inter: USB nolonger configured, switching back to secondary");
@@ -362,8 +367,18 @@ async fn usb_app<'a>(
 
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
+    let mut state = usb_dev.state();
     loop {
         utils_async::_yield().await;
+        let new_state = usb_dev.state();
+        if state != new_state {
+            defmt::info!(
+                "{} {}",
+                defmt::Debug2Format(&state),
+                defmt::Debug2Format(&new_state)
+            );
+            state = new_state;
+        }
 
         #[cfg(not(feature = "no-cli"))]
         if let Ok(mut usb_serial) = usb_serial.try_borrow_mut() {
@@ -417,7 +432,12 @@ async fn usb_app<'a>(
             }
 
             // Trigger the interrupt_in channel.
-            //let _ = keyboard_hid.write(keyboard_report.as_bytes());
+            if !keycodes.is_empty()
+                && usb_state == UsbDeviceState::Suspend
+                && usb_dev.remote_wakeup_enabled()
+            {
+                usb_dev.bus().remote_wakeup();
+            }
         }
     }
 }
