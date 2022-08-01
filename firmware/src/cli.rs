@@ -1,11 +1,11 @@
 use crate::{Source, UsbSerialCell};
 use usb_device::UsbError;
 
-#[cfg(not(feature = "debug"))]
+#[cfg(feature = "debug-to-cli")]
 use panic_persist::get_panic_message_bytes;
 
-#[cfg(feature = "debug")]
-use panic_probe as _;
+#[cfg(not(feature = "debug"))]
+use crate::defmt;
 
 fn read_from_usb(usb_serial: &UsbSerialCell, buf: &mut [u8]) -> Result<usize, UsbError> {
     let serial = &mut *usb_serial.borrow_mut();
@@ -20,7 +20,7 @@ fn read_from_usb(usb_serial: &UsbSerialCell, buf: &mut [u8]) -> Result<usize, Us
 pub fn update(
     usb_serial: &UsbSerialCell,
     source: Source,
-    #[cfg(not(feature = "debug"))] consumer: &mut defmt_bbq::DefmtConsumer,
+    #[cfg(feature = "debug-to-cli")] consumer: &mut defmt_bbq::DefmtConsumer,
 ) {
     let mut buf = [0; 8];
 
@@ -30,7 +30,7 @@ pub fn update(
         match b {
             b'r' => cortex_m::peripheral::SCB::sys_reset(),
             b'd' => {
-                #[cfg(not(feature = "debug"))]
+                #[cfg(feature = "debug-to-cli")]
                 {
                     let msg = get_panic_message_bytes().unwrap_or(b"No panic message available.");
                     match core::str::from_utf8(msg) {
@@ -38,7 +38,7 @@ pub fn update(
                         Err(_) => defmt::info!("Corrupted panic message"),
                     }
                 }
-                #[cfg(feature = "debug")]
+                #[cfg(all(feature = "debug", not(feature = "debug-to-cli")))]
                 {
                     defmt::info!("Using panic_probe! Refer to defmt traces.");
                 }
@@ -51,7 +51,7 @@ pub fn update(
         }
     }
 
-    #[cfg(not(feature = "debug"))]
+    #[cfg(feature = "debug-to-cli")]
     if let Ok(grant) = consumer.read() {
         let serial = &mut *usb_serial.borrow_mut();
         match serial.write(grant.buf()) {

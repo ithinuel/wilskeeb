@@ -67,10 +67,13 @@ panic = "abort"
 opt-level = "s"
 
 [features]
-default = ["standalone"]
-standalone = ["defmt-bbq", "panic-persist", "defmt", "rp2040-hal/defmt"]
-debug = ["defmt-rtt", "panic-probe", "defmt", "rp2040-hal/defmt"]
-no-cli = [ "panic-reset" ]
+default = ["panic-reset"]
+cli = []
+
+debug-to-probe = ["defmt-rtt", "debug", "panic-probe"]
+debug-to-cli = ["cli", "defmt-bbq", "debug", "panic-persist"]
+
+debug = ["defmt", "rp2040-hal/defmt"]
 
 [patch.crates-io]
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }

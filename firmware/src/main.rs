@@ -3,13 +3,9 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-#[cfg(any(
-    all(feature = "standalone", feature = "debug"),
-    all(feature = "standalone", feature = "no-cli"),
-    all(feature = "debug", feature = "no-cli")
-))]
+#[cfg(all(feature = "debug-to-probe", feature = "debug-to-cli"))]
 compile_error!(
-    "Only one feature of \"no-cli\", \"standalone\" or \"debug\" must be enabled for this create"
+    "Only one feature of \"debug-to-probe\" or \"debug-to-cli\" must be enabled for this create"
 );
 
 use core::{
@@ -19,11 +15,14 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
-#[cfg(feature = "debug")]
-use defmt_rtt as _;
-
-#[cfg(feature = "no-cli")]
+#[cfg(not(any(feature = "debug-to-probe", feature = "debug-to-cli")))]
 use panic_reset as _;
+
+#[cfg(feature = "debug-to-probe")]
+use panic_probe as _;
+
+#[cfg(feature = "debug-to-probe")]
+use defmt_rtt as _;
 
 use embedded_time::{
     duration::{Extensions as _, Microseconds},
@@ -51,7 +50,7 @@ use usbd_human_interface_device::{
     page::Keyboard,
     UsbHidError,
 };
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "cli")]
 use usbd_serial::SerialPort;
 
 use arraydeque::ArrayDeque;
@@ -63,7 +62,7 @@ use keyberon::{
 use num_enum::FromPrimitive;
 use smart_leds::{brightness, SmartLedsWrite, RGB8};
 
-#[cfg(feature = "no-cli")]
+#[cfg(not(feature = "debug"))]
 mod defmt {
     #[macro_export]
     macro_rules! info {
@@ -78,7 +77,7 @@ mod defmt {
     pub use super::{info, timestamp};
 }
 
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "cli")]
 mod cli;
 mod inter_board;
 mod layout;
@@ -91,7 +90,7 @@ use inter_board::{Error, Main, Secondary};
 use layout::CustomAction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(not(feature = "no-cli"), derive(defmt::Format))]
+#[cfg_attr(feature = "debug", derive(defmt::Format))]
 pub enum Source {
     Left,
     Right,
@@ -118,7 +117,7 @@ type MyUsbHidClass<'a> = UsbHidClass<
         frunk::hlist::HNil,
     >,
 >;
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "cli")]
 type UsbSerialCell<'a> = RefCell<SerialPort<'a, UsbBus, [u8; 64], [u8; USB_SERIAL_TX_SZ]>>;
 struct BlackBoard {
     side: Source,
@@ -132,14 +131,14 @@ struct BlackBoard {
 /// USB VID/PID for a generic keyboard from <https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt>
 const VID_PID: UsbVidPid = UsbVidPid(0x16c0, 0x27db);
 /// USB Serial cli update frequency.
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "cli")]
 const CLI_FREQUENCY: Hertz<u64> = Hertz(1_000);
 /// Matrix scan frequency.
 const SCAN_FREQUENCY: Hertz<u64> = Hertz(5_000);
 /// Key debounce period.
 const DEBOUNCE_PERIOD: Microseconds<u64> = Microseconds(1_000);
 
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "cli")]
 const USB_SERIAL_TX_SZ: usize = 1024;
 
 /// RP2040's second stage bootloader.
@@ -195,6 +194,8 @@ async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix)
         for event in debouncer.events(matrix.get()) {
             // TODO: if for some reason the queue isn't processed.
             // shall we drop the oldest or ignore the most recent?
+
+            defmt::info!(" Scan: {}", inter_board::EventWrapper(event));
             let _ = scanned.push_back(event);
         }
         drop(scanned);
@@ -348,7 +349,7 @@ async fn usb_app<'a>(
     timer: &Timer,
     usb_bus: &UsbBusAllocator<UsbBus>,
     mut keyboard_hid: MyUsbHidClass<'_>,
-    #[cfg(not(feature = "no-cli"))] usb_serial: &UsbSerialCell<'a>,
+    #[cfg(feature = "cli")] usb_serial: &UsbSerialCell<'a>,
 ) {
     let BlackBoard {
         to_usb,
@@ -359,11 +360,11 @@ async fn usb_app<'a>(
         .manufacturer("Ithinuel.me")
         .product("WilsKeeb")
         .serial_number(env!("CARGO_PKG_VERSION"))
+        .supports_remote_wakeup(true)
         .max_packet_size_0(64);
-    #[cfg(not(feature = "no-cli"))]
+    #[cfg(feature = "cli")]
     let builder = builder.composite_with_iads();
-    #[cfg_attr(feature = "no-cli", allow(unused_mut))]
-    let mut usb_dev = builder.supports_remote_wakeup(true).build();
+    let mut usb_dev = builder.build();
 
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
@@ -380,14 +381,14 @@ async fn usb_app<'a>(
             state = new_state;
         }
 
-        #[cfg(not(feature = "no-cli"))]
+        #[cfg(feature = "cli")]
         if let Ok(mut usb_serial) = usb_serial.try_borrow_mut() {
             if usb_dev.poll(&mut [&mut keyboard_hid, &mut *usb_serial]) {
                 keyboard_hid.poll();
                 usb_serial.poll();
             }
         }
-        #[cfg(feature = "no-cli")]
+        #[cfg(not(feature = "cli"))]
         if usb_dev.poll(&mut [&mut keyboard_hid]) {
             keyboard_hid.poll();
         }
@@ -415,7 +416,7 @@ async fn usb_app<'a>(
                 _ => {} //evt => media_hid.device_mut().update(evt),
             };
 
-            // update the USB interfaces.
+            // Collect key presses.
             let keycodes: ArrayVec<_, 70> = layout
                 .keycodes()
                 .map(|k| Keyboard::from_primitive(k as u8))
@@ -431,7 +432,7 @@ async fn usb_app<'a>(
                 Err(e) => panic!("Failed to process keyboard tick: {:?}", e),
             }
 
-            // Trigger the interrupt_in channel.
+            // Wake the host.
             if !keycodes.is_empty()
                 && usb_state == UsbDeviceState::Suspend
                 && usb_dev.remote_wakeup_enabled()
@@ -446,7 +447,7 @@ async fn usb_app<'a>(
 ///
 /// Handles simple request from the usb-serial interface to help manage and debug the firmware.
 /// see [`cli::update`] for a full description of the supported commands.
-#[cfg(feature = "standalone")]
+#[cfg(feature = "debug-to-cli")]
 async fn cli_app<'a>(
     timer: &Timer,
     usb_serial: &UsbSerialCell<'a>,
@@ -462,7 +463,7 @@ async fn cli_app<'a>(
         cli::update(usb_serial, source, &mut consumer);
     }
 }
-#[cfg(feature = "debug")]
+#[cfg(all(feature = "cli", not(feature = "debug-to-cli")))]
 async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>, source: Source) {
     const CLI_PERIOD: Microseconds<u64> = Microseconds(1_000_000 / CLI_FREQUENCY.0);
 
@@ -590,7 +591,7 @@ fn main() -> ! {
         (*pac::SIO::ptr()).spinlock[31].write_with_zero(|w| w.bits(1));
     }
 
-    #[cfg(feature = "standalone")]
+    #[cfg(feature = "debug-to-cli")]
     let consumer = defmt_bbq::init().unwrap();
 
     // GPIO0-1: SDA/SCL: inter-chip com (i2c0)
@@ -629,7 +630,7 @@ fn main() -> ! {
         .build(&usb_bus);
 
     // This needs to be the last class to be defined.
-    #[cfg(not(feature = "no-cli"))]
+    #[cfg(feature = "cli")]
     let usb_serial = RefCell::new(SerialPort::new_with_store(
         &usb_bus,
         [0; 64],
@@ -680,15 +681,15 @@ fn main() -> ! {
         &timer,
         &usb_bus,
         keyboard_hid,
-        #[cfg(not(feature = "no-cli"))]
+        #[cfg(feature = "cli")]
         &usb_serial,
     ));
-    #[cfg(not(feature = "no-cli"))]
+    #[cfg(feature = "cli")]
     let mut cli_task = Task::new(cli_app(
         &timer,
         &usb_serial,
         side,
-        #[cfg(feature = "standalone")]
+        #[cfg(feature = "debug-to-cli")]
         consumer,
     ));
     let mut ui_task = Task::new(ui_app(
@@ -702,7 +703,7 @@ fn main() -> ! {
     let _inter_board_hndl = inter_board_task.spawn(&runtime);
     let _scan_hndl = scan_task.spawn(&runtime);
     let usb_hndl = usb_task.spawn(&runtime);
-    #[cfg(not(feature = "no-cli"))]
+    #[cfg(feature = "cli")]
     let _cli_hndl = cli_task.spawn(&runtime);
     let _ui_hndl = ui_task.spawn(&runtime);
     usb_hndl.join();

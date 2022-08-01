@@ -4,6 +4,7 @@ use arrayvec::ArrayVec;
 use embedded_hal_async::i2c::I2c;
 use embedded_time::{duration::Extensions, rate::Hertz};
 use futures::FutureExt;
+use keyberon::layout::Event;
 use rp2040_async_i2c::AsyncI2C;
 use rp2040_hal::{
     gpio::{bank0, FunctionI2C, Pin},
@@ -15,7 +16,7 @@ use rp2040_hal::{
 use super::{ScannedEventStack, Source};
 use crate::{utils_async, ToUSBStack};
 
-#[cfg(feature = "no-cli")]
+#[cfg(not(feature = "debug"))]
 use crate::defmt;
 
 type Pins<Mode> = (Pin<bank0::Gpio0, Mode>, Pin<bank0::Gpio1, Mode>);
@@ -27,11 +28,24 @@ const INTER_BOARD_FREQ: Hertz = Hertz(50_000);
 const TRANSACTION_TIMEOUT: u32 = 10_000;
 const COMM_TIMEOUT: u32 = 50_000;
 
+#[cfg(feature = "debug")]
+pub struct EventWrapper(pub Event);
+#[cfg(feature = "debug")]
+impl defmt::Format for EventWrapper {
+    fn format(&self, fmt: defmt::Formatter) {
+        let (op, r, c) = match self.0 {
+            Event::Press(r, c) => (defmt::intern!("Press"), r, c),
+            Event::Release(r, c) => (defmt::intern!("Release"), r, c),
+        };
+        defmt::write!(fmt, "{}({}, {})", op, r, c)
+    }
+}
+
 pub struct Main {
     i2c: AsyncI2C<I2C0, Pins<FunctionI2C>>,
     attached: bool,
 }
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "debug")]
 impl defmt::Format for Main {
     fn format(&self, fmt: defmt::Formatter) {
         defmt::write!(fmt, "Main {{…}}")
@@ -46,7 +60,7 @@ pub struct Secondary {
     configured: bool,
     timestamp: u32,
 }
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "debug")]
 impl defmt::Format for Secondary {
     fn format(&self, fmt: defmt::Formatter) {
         defmt::write!(
@@ -65,7 +79,7 @@ pub enum Error {
     BusError(rp2040_hal::i2c::Error),
     QueueFull,
 }
-#[cfg(not(feature = "no-cli"))]
+#[cfg(feature = "debug")]
 impl defmt::Format for Error {
     fn format(&self, fmt: defmt::Formatter) {
         use embedded_hal_async::i2c::Error as _;
@@ -162,7 +176,6 @@ impl Main {
                 }
             }
 
-            use keyberon::layout::Event;
             let mut to_usb = to_usb.borrow_mut();
             let before = to_usb.len();
             // we don't really care about errors, that might just be because of events buffer full
@@ -179,7 +192,7 @@ impl Main {
                     } else {
                         Event::Release(row, col)
                     };
-                    defmt::info!("Inter: {:x} => {}", evt, defmt::Debug2Format(&conv));
+                    defmt::info!("Inter: {}", EventWrapper(conv));
                     conv
                 })
                 .try_for_each(|evt| to_usb.push_back((source, evt)))
@@ -257,7 +270,7 @@ impl Secondary {
 
         // serve any pending request.
         let evt = self.i2c.next();
-        #[cfg(not(feature = "no-cli"))]
+        #[cfg(feature = "debug")]
         if let Some(evt) = &evt {
             defmt::info!("Inter: {}", defmt::Debug2Format(evt));
         }

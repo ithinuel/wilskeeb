@@ -23,7 +23,7 @@ fn main() {
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
 
-    if !cfg!(feature = "no-cli") {
+    if cfg!(feature = "debug") {
         println!("cargo:rustc-link-arg=-Tdefmt.x");
     }
 
