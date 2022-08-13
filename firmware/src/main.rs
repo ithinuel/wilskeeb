@@ -130,6 +130,7 @@ struct BlackBoard {
 
 /// USB VID/PID for a generic keyboard from <https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt>
 const VID_PID: UsbVidPid = UsbVidPid(0x16c0, 0x27db);
+const DEVICE_RELEASE: u16 = 0x0100;
 /// USB Serial cli update frequency.
 #[cfg(feature = "cli")]
 const CLI_FREQUENCY: Hertz<u64> = Hertz(1_000);
@@ -364,7 +365,12 @@ async fn usb_app<'a>(
         .product("WilsKeeb")
         .serial_number(env!("CARGO_PKG_VERSION"))
         .supports_remote_wakeup(true)
-        .max_packet_size_0(64);
+        .device_class(0)
+        .device_sub_class(0)
+        .device_protocol(0)
+        .max_packet_size_0(64)
+        .max_power(500)
+        .device_release(DEVICE_RELEASE);
     #[cfg(feature = "cli")]
     let builder = builder.composite_with_iads();
     let mut usb_dev = builder.build();

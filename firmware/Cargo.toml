@@ -13,55 +13,66 @@ keywords = ["keyboard", "rp2040", "keyberon"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cortex-m = "0.7.3"
-cortex-m-rt = "0.7"
+cortex-m = "0.7.6"
+cortex-m-rt = "0.7.1"
 
-panic-probe = { version = "*", features = ["print-defmt"], optional = true }
-panic-persist = { version = "*", optional = true }
-panic-reset = { version = "*", optional = true }
+panic-probe = { version = "0.3.0", features = ["print-defmt"], optional = true }
+panic-persist = { version = "0.3.0", optional = true }
+panic-reset = { version = "0.1.1", optional = true }
 
 embedded-hal = { version = "=1.0.0-alpha.8", features = [] }
-embedded-hal-async = "0.1.0-alpha.1"
-embedded-time = "0.12.0"
-embedded-graphics = "0.7.0"
-nb = "*"
-either = { version = "*", default-features = false }
+embedded-hal-async = "=0.1.0-alpha.1"
+embedded-time = "0.12.1"
 
-rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", features = ["rt", "eh1_0_alpha"] }
-rp2040-boot2 = { git = "https://github.com/rp-rs/rp2040-boot2-rs", branch = "main" }
+# rp2040 hal & drivers
 rp2040-async-i2c = { git = "https://github.com/ithinuel/rp2040-async-i2c" }
+rp2040-boot2 = { git = "https://github.com/rp-rs/rp2040-boot2-rs", branch = "main" }
+rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", features = [
+  "rt",
+  "eh1_0_alpha",
+  "rp2040-e5"
+] }
 
+# UI deps
 adafruit-featherwing-oled128x64 = { git = "https://github.com/ithinuel/sh1107-rs" }
+embedded-graphics = "0.7.1"
 i2c-pio = { git = "https://github.com/ithinuel/i2c-pio-rs" }
 sh1107 = { git = "https://github.com/ithinuel/sh1107-rs" }
 smart-leds = "0.3.0"
 ws2812-pio = { git = "https://github.com/ithinuel/ws2812-pio-rs" }
 
-futures = { version = "0.3.19", default-features = false, features = ["async-await"] }
+# async ftw
+futures = { version = "0.3.21", default-features = false, features = [
+  "async-await",
+] }
 nostd_async = { version = "0.6.0", features = ["cortex_m"] }
 
-usb-device = "0.2.8"
-usbd-serial = "*"
+# usb related deps
+frunk = { version = "0.4.0", default-features = false }
 keyberon = { git = "https://github.com/TeXitoi/keyberon.git" }
-usbd-human-interface-device = "*"
-frunk = { version = "0.4", default-features = false }
-num_enum = { version = "*", default-features = false }
+num_enum = { version = "0.5.7", default-features = false }
+usb-device = "0.2.9"
+usbd-human-interface-device = "0.2.1"
+usbd-serial = "0.1.1"
 
-defmt = { version = "0.3.0", optional = true }
-defmt-rtt = { version = "*", optional = true }
-defmt-bbq = { version = "0.1.0", optional = true }
+# logging
 bbqueue = { version = "0.5.1", features = ["thumbv6"] }
+defmt = { version = "0.3.2", optional = true }
+defmt-bbq = { version = "0.1.0", optional = true }
+defmt-rtt = { version = "0.3.2", optional = true }
 
-arraydeque = { version = "*", default-features = false }
-arrayvec = { version = "*", default-features = false }
-num-integer = { version = "0.1.44", default-features = false }
+# interkeyboard tools
+arraydeque = { version = "0.4.5", default-features = false }
+arrayvec = { version = "0.7.2", default-features = false }
+either = { version = "1.7.0", default-features = false }
+num-integer = { version = "0.1.45", default-features = false }
 
 [dev-dependencies]
-embedded-graphics-simulator = "*"
+embedded-graphics-simulator = "0.3.0"
 
 [profile.release]
-debug = 1 # skip line info for cleaner probe-run output
-lto = true
+debug = 1         # skip line info for cleaner probe-run output
+lto = "fat"
 codegen-units = 1
 panic = "abort"
 opt-level = "s"
@@ -78,7 +89,6 @@ debug = ["defmt", "rp2040-hal/defmt"]
 [patch.crates-io]
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
 bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }
-usb-device = { git = "https://github.com/rust-embedded-community/usb-device" }
 
 [patch.'https://github.com/rp-rs/rp-hal']
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }

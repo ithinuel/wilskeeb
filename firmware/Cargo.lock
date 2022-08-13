@@ -1435,7 +1435,8 @@ checksum = "c4f5b37a154999a8f3f98cc23a628d850e154479cd94decf3414696e12e31aaf"
 [[package]]
 name = "usb-device"
 version = "0.2.9"
-source = "git+https://github.com/rust-embedded-community/usb-device#2297008082132dcaef7b79b4e5c09a7dad0b8c0f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f6cc3adc849b5292b4075fc0d5fdcf2f24866e88e336dd27a8943090a520508"
 
 [[package]]
 name = "usbd-human-interface-device"
@@ -1520,7 +1521,6 @@ dependencies = [
  "futures",
  "i2c-pio",
  "keyberon",
- "nb 1.0.0",
  "nostd_async",
  "num-integer",
  "num_enum",
