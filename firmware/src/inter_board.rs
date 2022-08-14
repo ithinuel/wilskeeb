@@ -2,7 +2,8 @@ use core::cell::RefCell;
 
 use arrayvec::ArrayVec;
 use embedded_hal_async::i2c::I2c;
-use embedded_time::{duration::Extensions, rate::Hertz};
+use fugit::ExtU32;
+use fugit::HertzU32;
 use futures::FutureExt;
 use keyberon::layout::Event;
 use rp2040_async_i2c::AsyncI2C;
@@ -24,7 +25,7 @@ type I2CPeriph = I2CPeripheralEventIterator<I2C0, Pins<FunctionI2C>>;
 
 /// I2C address for inter keyboard communication.
 const ADDRESS: u16 = 0x055;
-const INTER_BOARD_FREQ: Hertz = Hertz(50_000);
+const INTER_BOARD_FREQ: HertzU32 = HertzU32::from_raw(50_000);
 const TRANSACTION_TIMEOUT: u32 = 10_000;
 const COMM_TIMEOUT: u32 = 50_000;
 const COLUMN_COUNT: u8 = 14;
@@ -111,7 +112,7 @@ impl Main {
         i2c_block: pac::I2C0,
         (sda, scl): Pins<FunctionI2C>,
         resets: &mut pac::RESETS,
-        system_clock_freq: Hertz,
+        system_clock_freq: HertzU32,
     ) -> Self {
         let i2c = rp2040_async_i2c::AsyncI2C::new(
             i2c_block,
@@ -139,7 +140,7 @@ impl Main {
                 defmt::info!("new main: attempt {}", count);
                 let res = futures::select_biased! {
                     res = self.i2c.write(ADDRESS, &[0x80, 0x01]).fuse() => Ok(res),
-                    _ = utils_async::wait_for(timer, 1_000.microseconds()).fuse() => Err(Timeout)
+                    _ = utils_async::wait_for(timer, 1_000.micros()).fuse() => Err(Timeout)
                 };
                 // try to configure secondary
                 break match res {
@@ -151,9 +152,9 @@ impl Main {
                     Ok(Err(_)) if count < 5 => {
                         count += 1;
                         let delay = if source == Source::Right {
-                            10_000.microseconds()
+                            10_000.micros()
                         } else {
-                            5_000.microseconds()
+                            5_000.micros()
                         };
                         super::utils_async::wait_for(timer, delay).await;
                         continue;
@@ -169,7 +170,7 @@ impl Main {
             loop {
                 match futures::select_biased! {
                     res = self.i2c.write_read(ADDRESS, &[0x00], &mut keypresses).fuse() => Ok(res),
-                    _ = utils_async::wait_for(timer, 5_000.microseconds()).fuse() => Err(Timeout)
+                    _ = utils_async::wait_for(timer, 5_000.micros()).fuse() => Err(Timeout)
                 } {
                     Ok(res) => break res?,
                     Err(Timeout) if health > 0 => health -= 1,
@@ -221,7 +222,7 @@ impl Main {
             loop {
                 match futures::select_biased! {
                     res = self.i2c.write(ADDRESS, &frame).fuse() => Ok(res),
-                    _ = utils_async::wait_for(timer, 7_000.microseconds()).fuse() => Err(Timeout)
+                    _ = utils_async::wait_for(timer, 7_000.micros()).fuse() => Err(Timeout)
                 } {
                     Ok(res) => break res?,
                     Err(Timeout) if health > 0 => health -= 1,

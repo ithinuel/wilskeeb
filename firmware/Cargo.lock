@@ -489,6 +489,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
 
 [[package]]
+name = "fugit"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ab17bb279def6720d058cb6c052249938e7f99260ab534879281a95367a87e5"
+dependencies = [
+ "gcd",
+]
+
+[[package]]
 name = "funty"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,6 +577,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gcd"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f37978dab2ca789938a83b2f8bc1ef32db6633af9051a6cd409eff72cbaaa79a"
+dependencies = [
+ "paste",
+]
+
+[[package]]
 name = "gif"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -614,7 +632,7 @@ version = "0.3.0"
 dependencies = [
  "cortex-m",
  "embedded-hal 0.2.7",
- "embedded-time",
+ "fugit",
  "nb 1.0.0",
  "pio",
  "rp2040-hal",
@@ -1222,7 +1240,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 1.0.0-alpha.8",
  "embedded-hal-async",
- "embedded-time",
+ "fugit",
  "futures",
  "rp2040-hal",
 ]
@@ -1245,7 +1263,7 @@ dependencies = [
  "defmt",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0-alpha.8",
- "embedded-time",
+ "fugit",
  "itertools",
  "nb 1.0.0",
  "paste",
@@ -1518,6 +1536,7 @@ dependencies = [
  "embedded-hal-async",
  "embedded-time",
  "frunk",
+ "fugit",
  "futures",
  "i2c-pio",
  "keyberon",
@@ -1565,7 +1584,7 @@ version = "0.3.0"
 dependencies = [
  "cortex-m",
  "embedded-hal 0.2.7",
- "embedded-time",
+ "fugit",
  "nb 1.0.0",
  "pio",
  "rp2040-hal",

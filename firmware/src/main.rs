@@ -10,7 +10,6 @@ compile_error!(
 
 use core::{
     cell::RefCell,
-    convert::TryInto,
     iter::once,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
@@ -24,10 +23,8 @@ use panic_probe as _;
 #[cfg(feature = "debug-to-probe")]
 use defmt_rtt as _;
 
-use embedded_time::{
-    duration::{Extensions as _, Microseconds},
-    rate::{Extensions as _, Hertz},
-};
+use fugit::{ExtU32, ExtU64, HertzU32, HertzU64, MicrosDurationU64, RateExtU32};
+
 use rp2040_hal::{
     clocks::Clock,
     gpio::{bank0, Pin, PinId, Pins, PullDownDisabled},
@@ -133,11 +130,11 @@ const VID_PID: UsbVidPid = UsbVidPid(0x16c0, 0x27db);
 const DEVICE_RELEASE: u16 = 0x0100;
 /// USB Serial cli update frequency.
 #[cfg(feature = "cli")]
-const CLI_FREQUENCY: Hertz<u64> = Hertz(1_000);
+const CLI_FREQUENCY: HertzU64 = HertzU64::from_raw(1_000);
 /// Matrix scan frequency.
-const SCAN_FREQUENCY: Hertz<u64> = Hertz(5_000);
-/// Key debounce period.
-const DEBOUNCE_PERIOD: Microseconds<u64> = Microseconds(1_000);
+const SCAN_FREQUENCY: HertzU64 = HertzU64::from_raw(5_000);
+/// Key debounce period in number of scans.
+const DEBOUNCE_PERIOD: u16 = 5;
 
 #[cfg(feature = "cli")]
 const USB_SERIAL_TX_SZ: usize = 1024;
@@ -175,20 +172,13 @@ fn read_side<P: PinId>(pin: Pin<P, PullDownDisabled>) -> Source {
 /// - Debounces matrix' state
 /// - Stacks the events on the blackboard
 async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix) {
-    const SCAN_PERIOD: Microseconds<u64> = Microseconds(1_000_000 / SCAN_FREQUENCY.0);
+    const SCAN_PERIOD: MicrosDurationU64 = SCAN_FREQUENCY.into_duration();
 
     let BlackBoard { scanned, .. } = board;
 
-    let mut debouncer = Debouncer::new(
-        Default::default(),
-        Default::default(),
-        (DEBOUNCE_PERIOD / SCAN_PERIOD.0)
-            .0
-            .try_into()
-            .expect("Debounce period must fit a u16"),
-    );
+    let mut debouncer = Debouncer::new(Default::default(), Default::default(), DEBOUNCE_PERIOD);
 
-    let mut now = Microseconds(timer.get_counter());
+    let mut now = MicrosDurationU64::from_ticks(timer.get_counter());
     loop {
         now = utils_async::wait_until(timer, now + SCAN_PERIOD).await;
         let mut scanned = scanned.borrow_mut();
@@ -213,7 +203,7 @@ async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix)
 /// - when acting as secondary: serves requests comming from main.
 async fn inter_board_app(
     board: &BlackBoard,
-    system_clock_freq: Hertz,
+    system_clock_freq: HertzU32,
     i2c_block: pac::I2C0,
     sda: Pin<bank0::Gpio0, PullDownDisabled>,
     scl: Pin<bank0::Gpio1, PullDownDisabled>,
@@ -276,7 +266,7 @@ async fn inter_board_app(
                     Either::Left(Secondary::new(i2c_block, pins, &mut resets, timestamp))
                 } else {
                     let (state, delay) = match main.poll(to_usb, timer, !side).await {
-                        Ok(_) => (Either::Right(main), 1_000.microseconds()),
+                        Ok(_) => (Either::Right(main), 1_000u32.micros()),
                         Err(_e) => {
                             defmt::info!("Inter: Main::poll error: {}", _e);
                             let (i2c_block, pins) = main.release(&mut resets);
@@ -288,7 +278,7 @@ async fn inter_board_app(
                                     &mut resets,
                                     timestamp,
                                 )),
-                                500.microseconds(),
+                                500u32.micros(),
                             )
                         }
                     };
@@ -323,7 +313,7 @@ async fn inter_board_app(
                     // transaction) then reset the bus to clear any unexpected clock stretching.
                     Err(Error::BusIdle) | Err(Error::Timeout) => {
                         let (i2c_block, pins) = secondary.release(&mut resets);
-                        utils_async::wait_for(timer, 1_000.microseconds()).await;
+                        utils_async::wait_for(timer, 1_000u32.micros()).await;
                         Either::Left(Secondary::new(
                             i2c_block,
                             pins,
@@ -462,9 +452,9 @@ async fn cli_app<'a>(
     source: Source,
     mut consumer: defmt_bbq::DefmtConsumer,
 ) {
-    const CLI_PERIOD: Microseconds<u64> = Microseconds(1_000_000 / CLI_FREQUENCY.0);
+    const CLI_PERIOD: MicrosDurationU64 = CLI_FREQUENCY.into_duration();
 
-    let mut next_scan_at = Microseconds(timer.get_counter()) + CLI_PERIOD;
+    let mut next_scan_at = MicrosDurationU64::from_ticks(timer.get_counter()) + CLI_PERIOD;
     loop {
         next_scan_at = wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
@@ -473,9 +463,9 @@ async fn cli_app<'a>(
 }
 #[cfg(all(feature = "cli", not(feature = "debug-to-cli")))]
 async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>, source: Source) {
-    const CLI_PERIOD: Microseconds<u64> = Microseconds(1_000_000 / CLI_FREQUENCY.0);
+    const CLI_PERIOD: MicrosDurationU64 = CLI_FREQUENCY.into_duration();
 
-    let mut next_scan_at = Microseconds(timer.get_counter()) + CLI_PERIOD;
+    let mut next_scan_at = MicrosDurationU64::from_ticks(timer.get_counter()) + CLI_PERIOD;
     loop {
         next_scan_at = wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
@@ -508,7 +498,7 @@ async fn ui_app(
         Pin<bank0::Gpio16, PullDownDisabled>,
         Pin<bank0::Gpio17, PullDownDisabled>,
     ),
-    system_clock_freq: Hertz,
+    system_clock_freq: HertzU32,
 ) {
     let (mut pio0, pio0sm0, sda, scl) = oled;
     let _oled_display = i2c_pio::I2C::new(
@@ -534,9 +524,9 @@ async fn ui_app(
         system_clock_freq,
         timer.count_down(),
     );
-    let mut timestamp = Microseconds(timer.get_counter());
+    let mut timestamp = MicrosDurationU64::from_ticks(timer.get_counter());
     for wheel_pos in (0..=255).cycle() {
-        let now = utils_async::wait_until(timer, timestamp + 40_000.microseconds()).await;
+        let now = utils_async::wait_until(timer, timestamp + 40_000u64.micros()).await;
 
         neopixel
             .write(brightness(once(wheel(wheel_pos)), 25))

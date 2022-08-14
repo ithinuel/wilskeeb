@@ -23,6 +23,7 @@ panic-reset = { version = "0.1.1", optional = true }
 embedded-hal = { version = "=1.0.0-alpha.8", features = [] }
 embedded-hal-async = "=0.1.0-alpha.1"
 embedded-time = "0.12.1"
+fugit = "0.3.6"
 
 # rp2040 hal & drivers
 rp2040-async-i2c = { git = "https://github.com/ithinuel/rp2040-async-i2c" }
