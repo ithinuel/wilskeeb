@@ -19,11 +19,6 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
-use arraydeque::ArrayDeque;
-
-use arrayvec::ArrayVec;
-#[cfg(not(feature = "no-cli"))]
-use defmt::info;
 #[cfg(feature = "debug")]
 use defmt_rtt as _;
 
@@ -34,9 +29,6 @@ use embedded_time::{
     duration::{Extensions as _, Microseconds},
     rate::{Extensions as _, Hertz},
 };
-
-use inter_board::{Error, Main, Secondary};
-use layout::CustomAction;
 use rp2040_hal::{
     clocks::Clock,
     gpio::{bank0, Pin, PinId, Pins, PullDownDisabled},
@@ -53,12 +45,6 @@ use usb_device::{
     class::UsbClass as _,
     device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid},
 };
-
-use keyberon::{
-    debounce::Debouncer,
-    layout::{CustomEvent, Event, Layout},
-};
-use num_enum::FromPrimitive;
 use usbd_human_interface_device::{
     device::keyboard::NKROBootKeyboardInterface,
     hid_class::{UsbHidClass, UsbHidClassBuilder},
@@ -68,14 +54,28 @@ use usbd_human_interface_device::{
 #[cfg(not(feature = "no-cli"))]
 use usbd_serial::SerialPort;
 
+use arraydeque::ArrayDeque;
+use arrayvec::ArrayVec;
+use keyberon::{
+    debounce::Debouncer,
+    layout::{CustomEvent, Event, Layout},
+};
+use num_enum::FromPrimitive;
 use smart_leds::{brightness, SmartLedsWrite, RGB8};
 
 #[cfg(feature = "no-cli")]
-#[macro_use]
 mod defmt {
+    #[macro_export]
     macro_rules! info {
         ($($_:tt)*) => {{}};
     }
+    #[macro_export]
+    macro_rules! timestamp {
+        ($($_:tt)*) => {};
+    }
+
+    // macros are exported at the root of the crate so pull them back here
+    pub use super::{info, timestamp};
 }
 
 #[cfg(not(feature = "no-cli"))]
@@ -127,7 +127,6 @@ struct BlackBoard {
     is_main_half: AtomicBool,
     scanned: RefCell<ScannedEventStack<16>>,
     to_usb: RefCell<ToUSBStack<32>>,
-    pressed_at: RefCell<[u64; 70]>,
 }
 
 /// USB VID/PID for a generic keyboard from <https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt>
@@ -154,30 +153,6 @@ defmt::timestamp!("{=u32:us}", {
     // NOTE(interrupt-safe) single instruction volatile read operation
     unsafe { pac::Peripherals::steal().TIMER.timerawl.read().bits() }
 });
-
-fn log_event(event: &Event, now: Microseconds<u64>, pressed_at: &mut [u64; 70]) {
-    match event {
-        Event::Press(row, col) => {
-            let idx = usize::from(row * 14 + col);
-            info!("Usb  : {}", defmt::Debug2Format(event));
-            if idx < pressed_at.len() {
-                pressed_at[idx] = now.0;
-            }
-        }
-        Event::Release(row, col) => {
-            let idx = usize::from(row * 14 + col);
-            if idx < pressed_at.len() {
-                info!(
-                    "Usb  : {}: {}",
-                    defmt::Debug2Format(event),
-                    now.0 - pressed_at[idx]
-                );
-            } else {
-                info!("Usb  : {}: out of bound", defmt::Debug2Format(event));
-            }
-        }
-    }
-}
 
 /// Detects which keyboard half we are running.
 fn read_side<P: PinId>(pin: Pin<P, PullDownDisabled>) -> Source {
@@ -221,7 +196,6 @@ async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix)
             // TODO: if for some reason the queue isn't processed.
             // shall we drop the oldest or ignore the most recent?
             let _ = scanned.push_back(event);
-            info!("Scan: {}", defmt::Debug2Format(&event));
         }
         drop(scanned);
     }
@@ -291,12 +265,13 @@ async fn inter_board_app(
                 if usb_state != (UsbDeviceState::Configured as u8) {
                     let (i2c_block, pins) = main.release(&mut resets);
                     is_main_half.store(false, Ordering::Relaxed);
+                    defmt::info!("Inter: USB nolonger configured, switching back to secondary");
                     Either::Left(Secondary::new(i2c_block, pins, &mut resets, timestamp))
                 } else {
                     let (state, delay) = match main.poll(to_usb, &timer, !side).await {
                         Ok(_) => (Either::Right(main), 1_000.microseconds()),
                         Err(_e) => {
-                            info!("Inter: Main::poll error: {}", _e);
+                            defmt::info!("Inter: Main::poll error: {}", _e);
                             let (i2c_block, pins) = main.release(&mut resets);
                             is_main_half.store(false, Ordering::Relaxed);
                             (
@@ -314,7 +289,7 @@ async fn inter_board_app(
                     let mut to_usb = to_usb.borrow_mut();
                     while let Some(evt) = scanned.pop_front() {
                         if let Err(_) = to_usb.push_back((side, evt)) {
-                            info!("Inter: Main: to_usb push failed");
+                            defmt::info!("Inter: Main: to_usb push failed");
                             break;
                         }
                     }
@@ -328,7 +303,7 @@ async fn inter_board_app(
                 let timestamp = timer.get_counter_low();
                 match secondary.serve(scanned, timestamp) {
                     Err(Error::BusIdle) if usb_state == (UsbDeviceState::Configured as u8) => {
-                        info!("Inter: USB Configured");
+                        defmt::info!("Inter: USB Configured");
 
                         let (i2c_block, pins) = secondary.release(&mut resets);
                         is_main_half.store(true, Ordering::Relaxed);
@@ -372,19 +347,18 @@ async fn usb_app<'a>(
 ) {
     let BlackBoard {
         to_usb,
-        pressed_at,
         is_main_half,
         ..
     } = board;
-
-    #[cfg_attr(feature = "no-cli", allow(unused_mut))]
-    let mut usb_dev = UsbDeviceBuilder::new(usb_bus, VID_PID)
+    let builder = UsbDeviceBuilder::new(usb_bus, VID_PID)
         .manufacturer("Ithinuel.me")
         .product("WilsKeeb")
         .serial_number(env!("CARGO_PKG_VERSION"))
-        .max_packet_size_0(64)
-        .composite_with_iads()
-        .build();
+        .max_packet_size_0(64);
+    #[cfg(not(feature = "no-cli"))]
+    let builder = builder.composite_with_iads();
+    #[cfg_attr(feature = "no-cli", allow(unused_mut))]
+    let mut usb_dev = builder.supports_remote_wakeup(true).build();
 
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
@@ -417,11 +391,6 @@ async fn usb_app<'a>(
                 if source == Source::Right {
                     event = event.transform(|row, col| (row, 13 - col));
                 }
-                log_event(
-                    &event,
-                    Microseconds(u64::from(now)),
-                    &mut pressed_at.borrow_mut(),
-                );
                 layout.event(event);
             }
             match layout.tick() {
@@ -623,7 +592,6 @@ fn main() -> ! {
         is_main_half: AtomicBool::new(false),
         scanned: RefCell::new(ArrayDeque::new()),
         to_usb: RefCell::new(ArrayDeque::new()),
-        pressed_at: RefCell::new([0; 70]),
     };
 
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS);

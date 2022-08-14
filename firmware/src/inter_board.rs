@@ -1,8 +1,6 @@
 use core::cell::RefCell;
 
 use arrayvec::ArrayVec;
-#[cfg(not(feature = "no-cli"))]
-use defmt::info;
 use embedded_hal_async::i2c::I2c;
 use embedded_time::{duration::Extensions, rate::Hertz};
 use futures::FutureExt;
@@ -16,6 +14,9 @@ use rp2040_hal::{
 
 use super::{ScannedEventStack, Source};
 use crate::{utils_async, ToUSBStack};
+
+#[cfg(feature = "no-cli")]
+use crate::defmt;
 
 type Pins<Mode> = (Pin<bank0::Gpio0, Mode>, Pin<bank0::Gpio1, Mode>);
 type I2CPeriph = I2CPeripheralEventIterator<I2C0, Pins<FunctionI2C>>;
@@ -120,7 +121,7 @@ impl Main {
         if !self.attached {
             let mut count = 0u32;
             loop {
-                info!("new main: attempt {}", count);
+                defmt::info!("new main: attempt {}", count);
                 let res = futures::select_biased! {
                     res = self.i2c.write(ADDRESS, &[0x80, 0x01]).fuse() => Ok(res),
                     _ = utils_async::wait_for(timer, 1_000.microseconds()).fuse() => Err(Timeout)
@@ -178,7 +179,7 @@ impl Main {
                     } else {
                         Event::Release(row, col)
                     };
-                    info!("Inter: {:x} => {}", evt, defmt::Debug2Format(&conv));
+                    defmt::info!("Inter: {:x} => {}", evt, defmt::Debug2Format(&conv));
                     conv
                 })
                 .try_for_each(|evt| to_usb.push_back((source, evt)))
@@ -231,7 +232,6 @@ impl Secondary {
         let i2c = rp2040_hal::i2c::I2C::new_peripheral_event_iterator(
             i2c_block, sda, scl, resets, ADDRESS,
         );
-        info!("Inter: new secondary");
         Self {
             i2c,
             transaction_start: false,
@@ -250,7 +250,7 @@ impl Secondary {
         // if last request was more than 1sec ago => drop configured state
         if timestamp.wrapping_sub(self.timestamp) >= 100_000 {
             if self.configured {
-                info!("Inter: timed out, configured state lost");
+                defmt::info!("Inter: timed out, configured state lost");
                 self.configured = false;
             }
         }
@@ -259,13 +259,13 @@ impl Secondary {
         let evt = self.i2c.next();
         #[cfg(not(feature = "no-cli"))]
         if let Some(evt) = &evt {
-            info!("Inter: {}", defmt::Debug2Format(evt));
+            defmt::info!("Inter: {}", defmt::Debug2Format(evt));
         }
         match evt {
             None => {
                 if let Some(ts) = self.start_ts {
                     if timestamp.wrapping_sub(ts) >= TRANSACTION_TIMEOUT {
-                        info!("Inter: {}: transaction timeout", timestamp);
+                        defmt::info!("Inter: {}: transaction timeout", timestamp);
 
                         self.start_ts = None;
                         self.transaction_start = false;
@@ -291,23 +291,28 @@ impl Secondary {
                         match self.ptr {
                             0x80 => {
                                 self.configured = byte == 1;
-                                info!(
+                                defmt::info!(
                                     "Inter: {}configured",
                                     if self.configured { "" } else { "not " }
                                 )
                             }
                             0x81 => {
                                 let mut scanned = scanned.borrow_mut();
-                                info!("Inter: write: {:x}: {} ({})", self.ptr, byte, scanned.len());
+                                defmt::info!(
+                                    "Inter: write: {:x}: {} ({})",
+                                    self.ptr,
+                                    byte,
+                                    scanned.len()
+                                );
                                 let drain = usize::from(byte).min(scanned.len());
                                 scanned.drain(0..drain);
                             }
                             0x82 => {
-                                info!("Inter: setting UI (not yet implemented)");
+                                defmt::info!("Inter: setting UI (not yet implemented)");
                                 /* TODO: impl ui */
                             }
                             _ => {
-                                info!("Inter: Out of range. Ignored");
+                                defmt::info!("Inter: Out of range. Ignored");
                             }
                         }
                         if (0x80..=0x81).contains(&self.ptr) {
@@ -330,15 +335,15 @@ impl Secondary {
                             .chain(core::iter::repeat(0))
                             .take(16)
                             .collect();
-                        info!("Inter: read: {:x}: {:x}", self.ptr, v.as_slice());
+                        defmt::info!("Inter: read: {:x}: {:x}", self.ptr, v.as_slice());
                         self.i2c.write(v.as_slice())
                     }
                     0x80 => {
-                        info!("Inter: read: {:x}: {}", self.ptr, self.configured);
+                        defmt::info!("Inter: read: {:x}: {}", self.ptr, self.configured);
                         self.i2c.write(&[if self.configured { 1 } else { 0 }])
                     }
                     _ => {
-                        info!("Inter: read: {:x}: out of bound", self.ptr);
+                        defmt::info!("Inter: read: {:x}: out of bound", self.ptr);
                         self.i2c.write(&[0])
                     }
                 };
