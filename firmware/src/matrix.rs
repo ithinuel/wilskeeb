@@ -2,10 +2,10 @@ use embedded_hal::digital::{blocking::OutputPin, PinState};
 use rp2040_hal::gpio::{bank0, Output, Pin, PullUpInput, Readable};
 
 const ROW_MASK: u32 = 0b11_1111_0100;
-#[derive(Debug, PartialEq, Default, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
 pub struct Row(u32);
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MatrixState([Row; 5]);
 impl Default for MatrixState {
     fn default() -> Self {

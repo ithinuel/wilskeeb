@@ -274,7 +274,7 @@ async fn inter_board_app(
                     defmt::info!("Inter: USB nolonger configured, switching back to secondary");
                     Either::Left(Secondary::new(i2c_block, pins, &mut resets, timestamp))
                 } else {
-                    let (state, delay) = match main.poll(to_usb, &timer, !side).await {
+                    let (state, delay) = match main.poll(to_usb, timer, !side).await {
                         Ok(_) => (Either::Right(main), 1_000.microseconds()),
                         Err(_e) => {
                             defmt::info!("Inter: Main::poll error: {}", _e);
@@ -291,16 +291,19 @@ async fn inter_board_app(
                             )
                         }
                     };
-                    let mut scanned = scanned.borrow_mut();
-                    let mut to_usb = to_usb.borrow_mut();
-                    while let Some(evt) = scanned.pop_front() {
-                        if let Err(_) = to_usb.push_back((side, evt)) {
-                            defmt::info!("Inter: Main: to_usb push failed");
-                            break;
+
+                    // scope the borrows
+                    {
+                        let mut scanned = scanned.borrow_mut();
+                        let mut to_usb = to_usb.borrow_mut();
+                        while let Some(evt) = scanned.pop_front() {
+                            if to_usb.push_back((side, evt)).is_err() {
+                                defmt::info!("Inter: Main: to_usb push failed");
+                                break;
+                            }
                         }
                     }
-                    drop(scanned);
-                    drop(to_usb);
+
                     utils_async::wait_for(timer, delay).await;
                     state
                 }
@@ -409,12 +412,9 @@ async fn usb_app<'a>(
                 }
                 layout.event(event);
             }
-            match layout.tick() {
-                CustomEvent::Press(CustomAction::Bootldr) => {
-                    rp2040_hal::rom_data::reset_to_usb_boot(0, 0)
-                }
-                _ => {} //evt => media_hid.device_mut().update(evt),
-            };
+            if let CustomEvent::Press(CustomAction::Bootldr) = layout.tick() {
+                rp2040_hal::rom_data::reset_to_usb_boot(0, 0)
+            }
 
             // Collect key presses.
             let keycodes: ArrayVec<_, 70> = layout

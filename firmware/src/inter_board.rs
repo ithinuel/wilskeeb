@@ -176,29 +176,31 @@ impl Main {
                 }
             }
 
-            let mut to_usb = to_usb.borrow_mut();
-            let before = to_usb.len();
-            // we don't really care about errors, that might just be because of events buffer full
-            // We don't have recovery procedures anyway
-            keypresses
-                .into_iter()
-                .take_while(|&b| b != 0)
-                .map(|evt| {
-                    let evt = evt - 1;
-                    let pressed = (evt & 0x80) == 0x80;
-                    let (row, col) = num_integer::div_rem(evt & 0x7F, 14);
-                    let conv = if pressed {
-                        Event::Press(row, col)
-                    } else {
-                        Event::Release(row, col)
-                    };
-                    defmt::info!("Inter: {}", EventWrapper(conv));
-                    conv
-                })
-                .try_for_each(|evt| to_usb.push_back((source, evt)))
-                .map_err(|_| Error::QueueFull)?;
-            let cnt = to_usb.len() - before;
-            drop(to_usb);
+            // scope the borrows
+            let cnt = {
+                let mut to_usb = to_usb.borrow_mut();
+                let before = to_usb.len();
+                // we don't really care about errors, that might just be because of events buffer full
+                // We don't have recovery procedures anyway
+                keypresses
+                    .into_iter()
+                    .take_while(|&b| b != 0)
+                    .map(|evt| {
+                        let evt = evt - 1;
+                        let pressed = (evt & 0x80) == 0x80;
+                        let (row, col) = num_integer::div_rem(evt & 0x7F, 14);
+                        let conv = if pressed {
+                            Event::Press(row, col)
+                        } else {
+                            Event::Release(row, col)
+                        };
+                        defmt::info!("Inter: {}", EventWrapper(conv));
+                        conv
+                    })
+                    .try_for_each(|evt| to_usb.push_back((source, evt)))
+                    .map_err(|_| Error::QueueFull)?;
+                to_usb.len() - before
+            };
 
             // TODO: actually read that from the UI
             let led = 0;
@@ -261,11 +263,9 @@ impl Secondary {
         timestamp: u32,
     ) -> Result<(), Error> {
         // if last request was more than 1sec ago => drop configured state
-        if timestamp.wrapping_sub(self.timestamp) >= 100_000 {
-            if self.configured {
-                defmt::info!("Inter: timed out, configured state lost");
-                self.configured = false;
-            }
+        if timestamp.wrapping_sub(self.timestamp) >= 100_000 && self.configured {
+            defmt::info!("Inter: timed out, configured state lost");
+            self.configured = false;
         }
 
         // serve any pending request.
