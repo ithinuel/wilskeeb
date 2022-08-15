@@ -405,6 +405,8 @@ async fn usb_app<'a>(
         let usb_state = usb_dev.state();
         board.usb_state.store(usb_state as u8, Ordering::Relaxed);
 
+        let _ = keyboard_hid.interface().read_report();
+
         // if 1ms since last update
         let now = timer.get_counter_low();
 
