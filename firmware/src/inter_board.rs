@@ -27,6 +27,7 @@ const ADDRESS: u16 = 0x055;
 const INTER_BOARD_FREQ: Hertz = Hertz(50_000);
 const TRANSACTION_TIMEOUT: u32 = 10_000;
 const COMM_TIMEOUT: u32 = 50_000;
+const COLUMN_COUNT: u8 = 14;
 
 #[cfg(feature = "debug")]
 pub struct EventWrapper(pub Event);
@@ -187,12 +188,13 @@ impl Main {
                     .take_while(|&b| b != 0)
                     .map(|evt| {
                         let evt = evt - 1;
-                        let pressed = (evt & 0x80) == 0x80;
-                        let (row, col) = num_integer::div_rem(evt & 0x7F, 14);
-                        let conv = if pressed {
-                            Event::Press(row, col)
-                        } else {
+                        let (pressed, key) = (evt & 0x80, evt & 0x7F);
+                        // there's no concerns for speed here, u8 are already super optimised.
+                        let (row, col) = (key / COLUMN_COUNT, key % COLUMN_COUNT);
+                        let conv = if pressed == 0 {
                             Event::Release(row, col)
+                        } else {
+                            Event::Press(row, col)
                         };
                         defmt::info!("Inter: {}", EventWrapper(conv));
                         conv
@@ -343,7 +345,8 @@ impl Secondary {
                             .cloned()
                             .map(|event| {
                                 let (row, col) = event.coord();
-                                (row * 14 + col + 1) | if event.is_press() { 0x80 } else { 0 }
+                                (row * COLUMN_COUNT + col + 1)
+                                    | if event.is_press() { 0x80 } else { 0 }
                             })
                             .chain(core::iter::repeat(0))
                             .take(16)

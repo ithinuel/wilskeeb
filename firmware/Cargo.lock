@@ -1522,7 +1522,6 @@ dependencies = [
  "i2c-pio",
  "keyberon",
  "nostd_async",
- "num-integer",
  "num_enum",
  "panic-persist",
  "panic-probe",
