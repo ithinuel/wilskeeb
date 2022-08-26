@@ -4,18 +4,6 @@
 [submodule "madworm-ws2812b.pretty"]
 	path = pcb/lib/WS2812B.pretty
 	url = https://github.com/madworm/WS2812B.pretty.git
-[submodule "rp-hal"]
-	path = vendor/rp-hal
-	url = https://github.com/ithinuel/rp-hal.git
-[submodule "i2c-pio"]
-	path = vendor/i2c-pio-rs
-	url = https://github.com/ithinuel/i2c-pio-rs
-[submodule "ws2812-pio"]
-	path = vendor/ws2812-pio-rs
-	url = https://github.com/ithinuel/ws2812-pio-rs
-[submodule "defmt"]
-	path = vendor/defmt
-	url = https://github.com/knurling-rs/defmt/
 [submodule "sh1107"]
 	path = vendor/sh1107-rs
 	url = git@github.com:ithinuel/sh1107-rs.git

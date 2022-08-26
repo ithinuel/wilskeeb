@@ -11,9 +11,9 @@ fn read_from_usb(usb_serial: &UsbSerialCell, buf: &mut [u8]) -> Result<usize, Us
     let serial = &mut *usb_serial.borrow_mut();
 
     match serial.read(buf) {
-        Ok(len) => (Ok(len)),
+        Ok(len) => Ok(len),
         Err(UsbError::WouldBlock) => Ok(0),
-        Err(e) => (Err(e)),
+        Err(e) => Err(e),
     }
 }
 
@@ -23,6 +23,9 @@ pub fn update(
     #[cfg(feature = "debug-to-cli")] consumer: &mut defmt_bbq::DefmtConsumer,
 ) {
     let mut buf = [0; 8];
+    if cfg!(not(feature = "debug")) {
+        let _ = source;
+    }
 
     let len = read_from_usb(usb_serial, &mut buf).expect("Failed to read from usb serial port");
 

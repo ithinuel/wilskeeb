@@ -3,7 +3,13 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-#[cfg(all(feature = "debug-to-probe", feature = "debug-to-cli"))]
+#[cfg(any(
+    all(feature = "debug-to-probe", feature = "debug-to-cli"),
+    all(
+        feature = "debug",
+        not(any(feature = "debug-to-probe", feature = "debug-to-cli"))
+    )
+))]
 compile_error!(
     "Only one feature of \"debug-to-probe\" or \"debug-to-cli\" must be enabled for this create"
 );
@@ -134,7 +140,12 @@ const CLI_FREQUENCY: HertzU64 = HertzU64::from_raw(1_000);
 /// Matrix scan frequency.
 const SCAN_FREQUENCY: HertzU64 = HertzU64::from_raw(5_000);
 /// Key debounce period in number of scans.
-const DEBOUNCE_PERIOD: u16 = 5;
+const DEBOUNCE_PERIOD: MicrosDurationU64 = MicrosDurationU64::millis(5);
+
+static_assertions::const_assert!(DEBOUNCE_PERIOD.ticks() <= (u16::max_value() as u64));
+static_assertions::const_assert!(
+    DEBOUNCE_PERIOD.ticks() >= SCAN_FREQUENCY.into_duration::<1, 1_000_000>().ticks()
+);
 
 #[cfg(feature = "cli")]
 const USB_SERIAL_TX_SZ: usize = 1024;
@@ -173,10 +184,11 @@ fn read_side<P: PinId>(pin: Pin<P, PullDownDisabled>) -> Source {
 /// - Stacks the events on the blackboard
 async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix) {
     const SCAN_PERIOD: MicrosDurationU64 = SCAN_FREQUENCY.into_duration();
+    const DEBOUNCE_TICKS: u16 = (DEBOUNCE_PERIOD.ticks() / SCAN_PERIOD.ticks()) as u16;
 
     let BlackBoard { scanned, .. } = board;
 
-    let mut debouncer = Debouncer::new(Default::default(), Default::default(), DEBOUNCE_PERIOD);
+    let mut debouncer = Debouncer::new(Default::default(), Default::default(), DEBOUNCE_TICKS);
 
     let mut now = MicrosDurationU64::from_ticks(timer.get_counter());
     loop {
@@ -456,7 +468,7 @@ async fn cli_app<'a>(
 
     let mut next_scan_at = MicrosDurationU64::from_ticks(timer.get_counter()) + CLI_PERIOD;
     loop {
-        next_scan_at = wait_until(timer, next_scan_at).await + CLI_PERIOD;
+        next_scan_at = utils_async::wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
         cli::update(usb_serial, source, &mut consumer);
     }
@@ -467,7 +479,7 @@ async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>, source: Sour
 
     let mut next_scan_at = MicrosDurationU64::from_ticks(timer.get_counter()) + CLI_PERIOD;
     loop {
-        next_scan_at = wait_until(timer, next_scan_at).await + CLI_PERIOD;
+        next_scan_at = utils_async::wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
         cli::update(usb_serial, source);
     }

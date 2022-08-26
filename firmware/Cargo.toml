@@ -15,6 +15,7 @@ keywords = ["keyboard", "rp2040", "keyberon"]
 [dependencies]
 cortex-m = "0.7.6"
 cortex-m-rt = "0.7.1"
+critical-section = "1.1.0"
 
 panic-probe = { version = "0.3.0", features = ["print-defmt"], optional = true }
 panic-persist = { version = "0.3.0", optional = true }
@@ -27,23 +28,23 @@ fugit = "0.3.6"
 
 # rp2040 hal & drivers
 rp2040-async-i2c = { git = "https://github.com/ithinuel/rp2040-async-i2c" }
-rp2040-boot2 = { git = "https://github.com/rp-rs/rp2040-boot2-rs", branch = "main" }
-rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", features = [
+rp2040-boot2 = "0.2.1"
+rp2040-hal = { version = "0.6.0", features = [
   "rt",
   "eh1_0_alpha",
   "rp2040-e5"
-] }
+], default-features = false }
 
 # UI deps
 adafruit-featherwing-oled128x64 = { git = "https://github.com/ithinuel/sh1107-rs" }
 embedded-graphics = "0.7.1"
-i2c-pio = { git = "https://github.com/ithinuel/i2c-pio-rs" }
+i2c-pio = "0.4.0"
 sh1107 = { git = "https://github.com/ithinuel/sh1107-rs" }
 smart-leds = "0.3.0"
-ws2812-pio = { git = "https://github.com/ithinuel/ws2812-pio-rs" }
+ws2812-pio = "0.4.0"
 
 # async ftw
-futures = { version = "0.3.21", default-features = false, features = [
+futures = { version = "0.3.23", default-features = false, features = [
   "async-await",
 ] }
 nostd_async = { version = "0.6.0", features = ["cortex_m"] }
@@ -65,7 +66,8 @@ defmt-rtt = { version = "0.3.2", optional = true }
 # interkeyboard tools
 arraydeque = { version = "0.4.5", default-features = false }
 arrayvec = { version = "0.7.2", default-features = false }
-either = { version = "1.7.0", default-features = false }
+either = { version = "1.8.0", default-features = false }
+static_assertions = "1.1.0"
 
 [dev-dependencies]
 embedded-graphics-simulator = "0.3.0"
@@ -87,20 +89,10 @@ debug-to-cli = ["cli", "defmt-bbq", "debug", "panic-persist"]
 debug = ["defmt", "rp2040-hal/defmt"]
 
 [patch.crates-io]
-rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
 bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }
-
-[patch.'https://github.com/rp-rs/rp-hal']
-rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
-
-[patch.'https://github.com/ithinuel/i2c-pio-rs']
-i2c-pio = { path = "../vendor/i2c-pio-rs" }
 
 [patch.'https://github.com/ithinuel/rp2040-async-i2c']
 rp2040-async-i2c = { path = "../vendor/rp2040-async-i2c" }
-
-[patch.'https://github.com/ithinuel/ws2812-pio-rs']
-ws2812-pio = { path = "../vendor/ws2812-pio-rs" }
 
 [patch.'https://github.com/ithinuel/sh1107-rs']
 sh1107 = { path = "../vendor/sh1107-rs/sh1107" }
