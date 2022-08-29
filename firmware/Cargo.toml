@@ -73,7 +73,7 @@ static_assertions = "1.1.0"
 embedded-graphics-simulator = "0.3.0"
 
 [profile.release]
-debug = 1         # skip line info for cleaner probe-run output
+debug = 2         # skip line info for cleaner probe-run output
 lto = "fat"
 codegen-units = 1
 panic = "abort"
@@ -87,6 +87,8 @@ debug-to-probe = ["defmt-rtt", "debug", "panic-probe"]
 debug-to-cli = ["cli", "defmt-bbq", "debug", "panic-persist"]
 
 debug = ["defmt", "rp2040-hal/defmt"]
+
+intrinsics = []
 
 [patch.crates-io]
 bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }

@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![cfg_attr(feature = "intrinsics", feature(rustc_private))]
 
 #[cfg(any(
     all(feature = "debug-to-probe", feature = "debug-to-cli"),
@@ -13,6 +14,9 @@
 compile_error!(
     "Only one feature of \"debug-to-probe\" or \"debug-to-cli\" must be enabled for this create"
 );
+
+#[cfg(feature = "intrinsics")]
+extern crate compiler_builtins;
 
 use core::{
     cell::RefCell,
@@ -100,6 +104,9 @@ mod matrix;
 //mod ui;
 mod utils_async;
 mod utils_time;
+
+#[cfg(feature = "intrinsics")]
+mod intrinsics;
 
 use layout::CustomAction;
 use utils_time::MyClock;
