@@ -24,15 +24,15 @@ panic-reset = { version = "0.1.1", optional = true }
 embedded-hal = { version = "=1.0.0-alpha.8", features = [] }
 embedded-hal-async = "=0.1.0-alpha.1"
 embedded-time = "0.12.1"
-fugit = "0.3.6"
+fugit = { version = "0.3.6", features = ["defmt"] }
 
 # rp2040 hal & drivers
+sparkfun-pro-micro-rp2040 = "0.4.0"
 rp2040-async-i2c = { git = "https://github.com/ithinuel/rp2040-async-i2c" }
-rp2040-boot2 = "0.2.1"
 rp2040-hal = { version = "0.6.0", features = [
   "rt",
   "eh1_0_alpha",
-  "rp2040-e5"
+  "rp2040-e5",
 ], default-features = false }
 
 # UI deps
@@ -90,6 +90,9 @@ debug = ["defmt", "rp2040-hal/defmt"]
 
 [patch.crates-io]
 bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }
+rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
+ws2812-pio = { path = "../vendor/ws2812-pio-rs" }
+i2c-pio = { path = "../vendor/i2c-pio-rs" }
 
 [patch.'https://github.com/ithinuel/rp2040-async-i2c']
 rp2040-async-i2c = { path = "../vendor/rp2040-async-i2c" }

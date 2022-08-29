@@ -1,4 +1,4 @@
-use crate::{Source, UsbSerialCell};
+use crate::UsbSerialCell;
 use usb_device::UsbError;
 
 #[cfg(feature = "debug-to-cli")]
@@ -19,13 +19,9 @@ fn read_from_usb(usb_serial: &UsbSerialCell, buf: &mut [u8]) -> Result<usize, Us
 
 pub fn update(
     usb_serial: &UsbSerialCell,
-    source: Source,
     #[cfg(feature = "debug-to-cli")] consumer: &mut defmt_bbq::DefmtConsumer,
 ) {
     let mut buf = [0; 8];
-    if cfg!(not(feature = "debug")) {
-        let _ = source;
-    }
 
     let len = read_from_usb(usb_serial, &mut buf).expect("Failed to read from usb serial port");
 
@@ -41,14 +37,12 @@ pub fn update(
                         Err(_) => defmt::info!("Corrupted panic message"),
                     }
                 }
-                #[cfg(all(feature = "debug", not(feature = "debug-to-cli")))]
-                {
-                    defmt::info!("Using panic_probe! Refer to defmt traces.");
-                }
+                #[cfg(feature = "debug-to-probe")]
+                defmt::info!("Please refer to the rtt output of the debug probe.");
             }
             b'u' => rp2040_hal::rom_data::reset_to_usb_boot(0, 0),
             b's' => {
-                defmt::info!("This is the {} half", source);
+                defmt::info!("This is the {} half", crate::read_side());
             }
             _ => {}
         }
@@ -57,11 +51,9 @@ pub fn update(
     #[cfg(feature = "debug-to-cli")]
     if let Ok(grant) = consumer.read() {
         let serial = &mut *usb_serial.borrow_mut();
-        match serial.write(grant.buf()) {
-            Ok(len) => {
-                grant.release(len);
-            }
-            _ => { /* Ignore error: we have no way to recover from that. */ }
+        if let Ok(len) = serial.write(grant.buf()) {
+            grant.release(len);
+            { /* Ignore error: we have no way to recover from that. */ }
         }
     }
 }

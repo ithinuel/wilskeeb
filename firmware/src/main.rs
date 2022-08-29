@@ -20,28 +20,28 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
+#[cfg(feature = "debug-to-probe")]
+use panic_probe as _;
 #[cfg(not(any(feature = "debug-to-probe", feature = "debug-to-cli")))]
 use panic_reset as _;
 
 #[cfg(feature = "debug-to-probe")]
-use panic_probe as _;
-
-#[cfg(feature = "debug-to-probe")]
 use defmt_rtt as _;
 
-use fugit::{ExtU32, ExtU64, HertzU32, HertzU64, MicrosDurationU64, RateExtU32};
+use fugit::{ExtU32, HertzU32, MicrosDurationU32, RateExtU32, TimerInstantU64};
 
 use rp2040_hal::{
-    clocks::Clock,
-    gpio::{bank0, Pin, PinId, Pins, PullDownDisabled},
+    gpio::{bank0, Pin, Pins, PullDownDisabled},
     pac,
     pio::{self, PIOExt},
     sio::Sio,
     timer::Timer,
     usb::UsbBus,
     watchdog::Watchdog,
+    Clock,
 };
 
+use frunk::hlist::{HCons, HNil};
 use usb_device::{
     bus::UsbBusAllocator,
     class::UsbClass as _,
@@ -56,7 +56,7 @@ use usbd_human_interface_device::{
 #[cfg(feature = "cli")]
 use usbd_serial::SerialPort;
 
-use arraydeque::ArrayDeque;
+use arraydeque::{behavior::Saturating, ArrayDeque};
 use arrayvec::ArrayVec;
 use keyberon::{
     debounce::Debouncer,
@@ -68,7 +68,19 @@ use smart_leds::{brightness, SmartLedsWrite, RGB8};
 #[cfg(not(feature = "debug"))]
 mod defmt {
     #[macro_export]
+    macro_rules! trace {
+        ($($_:tt)*) => {{}};
+    }
+    #[macro_export]
+    macro_rules! debug {
+        ($($_:tt)*) => {{}};
+    }
+    #[macro_export]
     macro_rules! info {
+        ($($_:tt)*) => {{}};
+    }
+    #[macro_export]
+    macro_rules! error {
         ($($_:tt)*) => {{}};
     }
     #[macro_export]
@@ -77,7 +89,7 @@ mod defmt {
     }
 
     // macros are exported at the root of the crate so pull them back here
-    pub use super::{info, timestamp};
+    pub use super::{debug, error, info, timestamp, trace};
 }
 
 #[cfg(feature = "cli")]
@@ -89,8 +101,8 @@ mod matrix;
 mod utils_async;
 mod utils_time;
 
-use inter_board::{Error, Main, Secondary};
 use layout::CustomAction;
+use utils_time::MyClock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "debug", derive(defmt::Format))]
@@ -109,26 +121,24 @@ impl core::ops::Not for Source {
     }
 }
 
-type ScannedEventStack<const SIZE: usize> =
-    arraydeque::ArrayDeque<[Event; SIZE], arraydeque::behavior::Saturating>;
-type ToUSBStack<const SIZE: usize> =
-    arraydeque::ArrayDeque<[(Source, Event); SIZE], arraydeque::behavior::Saturating>;
-type MyUsbHidClass<'a> = UsbHidClass<
-    UsbBus,
-    frunk::hlist::HCons<
-        NKROBootKeyboardInterface<'a, rp2040_hal::usb::UsbBus, utils_time::MyClock<'a>>,
-        frunk::hlist::HNil,
-    >,
->;
+const SCANNED_STACK_SZ: usize = 16;
+const TO_USB_STACK_SZ: usize = 32;
+
+type ScannedEventStack = ArrayDeque<[Event; SCANNED_STACK_SZ], Saturating>;
+type ToUSBStack = ArrayDeque<[(Source, Event); TO_USB_STACK_SZ], Saturating>;
+type InterfaceList<'a> = HCons<NKROBootKeyboardInterface<'a, UsbBus, MyClock<'a>>, HNil>;
+type MyUsbHidClass<'a> = UsbHidClass<UsbBus, InterfaceList<'a>>;
 #[cfg(feature = "cli")]
-type UsbSerialCell<'a> = RefCell<SerialPort<'a, UsbBus, [u8; 64], [u8; USB_SERIAL_TX_SZ]>>;
+type UsbSerialCell<'a> =
+    RefCell<SerialPort<'a, UsbBus, [u8; USB_SERIAL_RX_SZ], [u8; USB_SERIAL_TX_SZ]>>;
+type TimerInstant = TimerInstantU64<1_000_000>;
+
 struct BlackBoard {
-    side: Source,
     /// The use of that field is a bit ugly but `UsbDeviceState` is `repr(u8)` so it should be ok.
     usb_state: AtomicU8,
     is_main_half: AtomicBool,
-    scanned: RefCell<ScannedEventStack<16>>,
-    to_usb: RefCell<ToUSBStack<32>>,
+    scanned: RefCell<ScannedEventStack>,
+    to_usb: RefCell<ToUSBStack>,
 }
 
 /// USB VID/PID for a generic keyboard from <https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt>
@@ -136,26 +146,29 @@ const VID_PID: UsbVidPid = UsbVidPid(0x16c0, 0x27db);
 const DEVICE_RELEASE: u16 = 0x0100;
 /// USB Serial cli update frequency.
 #[cfg(feature = "cli")]
-const CLI_FREQUENCY: HertzU64 = HertzU64::from_raw(1_000);
+const CLI_FREQUENCY: HertzU32 = HertzU32::kHz(1);
 /// Matrix scan frequency.
-const SCAN_FREQUENCY: HertzU64 = HertzU64::from_raw(5_000);
-/// Key debounce period in number of scans.
-const DEBOUNCE_PERIOD: MicrosDurationU64 = MicrosDurationU64::millis(5);
+const SCAN_FREQUENCY: HertzU32 = HertzU32::kHz(5);
+/// Time required for a key press to stop bouncing.
+const DEBOUNCE_PERIOD: MicrosDurationU32 = MicrosDurationU32::millis(5);
+/// Maximum async task count on the system
+#[cfg(feature = "cli")]
+const TASK_COUNT: usize = 5;
+#[cfg(not(feature = "cli"))]
+const TASK_COUNT: usize = 6;
 
-static_assertions::const_assert!(DEBOUNCE_PERIOD.ticks() <= (u16::max_value() as u64));
-static_assertions::const_assert!(
-    DEBOUNCE_PERIOD.ticks() >= SCAN_FREQUENCY.into_duration::<1, 1_000_000>().ticks()
-);
+static_assertions::const_assert!(DEBOUNCE_PERIOD.ticks() <= (u16::max_value() as u32));
+static_assertions::const_assert!(matches!(
+    DEBOUNCE_PERIOD.const_partial_cmp(SCAN_FREQUENCY.into_duration::<1, 1_000_000>()),
+    Some(core::cmp::Ordering::Greater | core::cmp::Ordering::Equal)
+));
 
+#[cfg(feature = "cli")]
+const USB_SERIAL_RX_SZ: usize = 64;
 #[cfg(feature = "cli")]
 const USB_SERIAL_TX_SZ: usize = 1024;
 
-/// RP2040's second stage bootloader.
-///
-/// This bootloader configures the QSPI and the XIP controllers.
-#[used]
-#[link_section = ".boot2"]
-static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
+static IS_RIGHT: AtomicBool = AtomicBool::new(false);
 
 defmt::timestamp!("{=u32:us}", {
     // NOTE(interrupt-safe) single instruction volatile read operation
@@ -163,13 +176,8 @@ defmt::timestamp!("{=u32:us}", {
 });
 
 /// Detects which keyboard half we are running.
-fn read_side<P: PinId>(pin: Pin<P, PullDownDisabled>) -> Source {
-    use embedded_hal::digital::blocking::InputPin;
-    let pin = pin.into_pull_up_input(); // setup pull-up input
-    let is_right = pin.is_high().unwrap_or_else(|_| unreachable!()); // Cannot fail
-    pin.into_pull_down_disabled(); // reset the pin to its default status.
-
-    if is_right {
+fn read_side() -> Source {
+    if IS_RIGHT.load(Ordering::Relaxed) {
         Source::Right
     } else {
         Source::Left
@@ -183,14 +191,14 @@ fn read_side<P: PinId>(pin: Pin<P, PullDownDisabled>) -> Source {
 /// - Debounces matrix' state
 /// - Stacks the events on the blackboard
 async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix) {
-    const SCAN_PERIOD: MicrosDurationU64 = SCAN_FREQUENCY.into_duration();
+    const SCAN_PERIOD: MicrosDurationU32 = SCAN_FREQUENCY.into_duration();
     const DEBOUNCE_TICKS: u16 = (DEBOUNCE_PERIOD.ticks() / SCAN_PERIOD.ticks()) as u16;
 
     let BlackBoard { scanned, .. } = board;
 
     let mut debouncer = Debouncer::new(Default::default(), Default::default(), DEBOUNCE_TICKS);
 
-    let mut now = MicrosDurationU64::from_ticks(timer.get_counter());
+    let mut now = timer.get_counter();
     loop {
         now = utils_async::wait_until(timer, now + SCAN_PERIOD).await;
         let mut scanned = scanned.borrow_mut();
@@ -215,132 +223,42 @@ async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix)
 /// - when acting as secondary: serves requests comming from main.
 async fn inter_board_app(
     board: &BlackBoard,
-    system_clock_freq: HertzU32,
+    system_clock: &rp2040_hal::clocks::SystemClock,
     i2c_block: pac::I2C0,
     sda: Pin<bank0::Gpio0, PullDownDisabled>,
     scl: Pin<bank0::Gpio1, PullDownDisabled>,
-    mut resets: pac::RESETS,
+    resets: pac::RESETS,
     timer: &Timer,
 ) {
-    use either::Either;
-
     let BlackBoard {
-        side,
         usb_state,
         scanned,
         to_usb,
         is_main_half,
         ..
     } = board;
-    let side = *side;
-    // Secondary register's map:
-    //
-    //
-    // Read:
-    // read on 0x00-0x7F do not change PTR.
-    // read on 0x80-0xFF do increment PTR. 0xFF rolls over to 0x80.
-    //
-    // Write:
-    // The first by written is always "PTR"
-    //
-    // 0x00: Event FIFO
-    // 0x80: 7-1 reserved
-    //       0   configured
-    // 0x81: 7-0 led status
+
     let (mut sda, mut scl) = (sda.into_mode(), scl.into_mode());
     scl.set_slew_rate(rp2040_hal::gpio::OutputSlewRate::Slow);
     sda.set_slew_rate(rp2040_hal::gpio::OutputSlewRate::Slow);
     // Fix odd capacitor-like signal behavior
     scl.set_drive_strength(rp2040_hal::gpio::OutputDriveStrength::TwoMilliAmps);
     sda.set_drive_strength(rp2040_hal::gpio::OutputDriveStrength::TwoMilliAmps);
-    let mut state: Either<Secondary, Main> = Either::Left(Secondary::new(
+
+    let mut inter_board = inter_board::InterBoard::new(
+        system_clock,
         i2c_block,
         (sda, scl),
-        &mut resets,
-        timer.get_counter_low(),
-    ));
-
-    let configured = [
-        (UsbDeviceState::Configured as u8),
-        (UsbDeviceState::Suspend as u8),
-    ];
+        resets,
+        timer.get_counter(),
+    );
 
     // wait for usb configured state or an i2c sync packet
     loop {
-        let usb_state = usb_state.load(Ordering::Relaxed);
-        let timestamp = timer.get_counter_low();
-        state = match state {
-            Either::Right(mut main) => {
-                if !configured.contains(&usb_state) {
-                    let (i2c_block, pins) = main.release(&mut resets);
-                    is_main_half.store(false, Ordering::Relaxed);
-                    defmt::info!("Inter: USB nolonger configured, switching back to secondary");
-                    Either::Left(Secondary::new(i2c_block, pins, &mut resets, timestamp))
-                } else {
-                    let (state, delay) = match main.poll(to_usb, timer, !side).await {
-                        Ok(_) => (Either::Right(main), 1_000u32.micros()),
-                        Err(_e) => {
-                            defmt::info!("Inter: Main::poll error: {}", _e);
-                            let (i2c_block, pins) = main.release(&mut resets);
-                            is_main_half.store(false, Ordering::Relaxed);
-                            (
-                                Either::Left(Secondary::new(
-                                    i2c_block,
-                                    pins,
-                                    &mut resets,
-                                    timestamp,
-                                )),
-                                500u32.micros(),
-                            )
-                        }
-                    };
+        let usb_state = unsafe { core::mem::transmute(usb_state.load(Ordering::Relaxed)) };
+        inter_board = inter_board.poll(usb_state, timer, scanned, to_usb).await;
 
-                    // scope the borrows
-                    {
-                        let mut scanned = scanned.borrow_mut();
-                        let mut to_usb = to_usb.borrow_mut();
-                        while let Some(evt) = scanned.pop_front() {
-                            if to_usb.push_back((side, evt)).is_err() {
-                                defmt::info!("Inter: Main: to_usb push failed");
-                                break;
-                            }
-                        }
-                    }
-
-                    utils_async::wait_for(timer, delay).await;
-                    state
-                }
-            }
-            Either::Left(mut secondary) => {
-                let timestamp = timer.get_counter_low();
-                match secondary.serve(scanned, timestamp) {
-                    Err(Error::BusIdle) if usb_state == (UsbDeviceState::Configured as u8) => {
-                        defmt::info!("Inter: USB Configured");
-
-                        let (i2c_block, pins) = secondary.release(&mut resets);
-                        is_main_half.store(true, Ordering::Relaxed);
-                        Either::Right(Main::new(i2c_block, pins, &mut resets, system_clock_freq))
-                    }
-                    // If the bus becomes idle (either during a transaction or outside of a
-                    // transaction) then reset the bus to clear any unexpected clock stretching.
-                    Err(Error::BusIdle) | Err(Error::Timeout) => {
-                        let (i2c_block, pins) = secondary.release(&mut resets);
-                        utils_async::wait_for(timer, 1_000u32.micros()).await;
-                        Either::Left(Secondary::new(
-                            i2c_block,
-                            pins,
-                            &mut resets,
-                            timer.get_counter_low(),
-                        ))
-                    }
-                    _ => {
-                        // lets be nice
-                        utils_async::_yield().await;
-                        Either::Left(secondary)
-                    }
-                }
-            }
-        }
+        is_main_half.store(inter_board.is_main(), Ordering::Relaxed);
     }
 }
 
@@ -365,7 +283,7 @@ async fn usb_app<'a>(
     let builder = UsbDeviceBuilder::new(usb_bus, VID_PID)
         .manufacturer("Ithinuel.me")
         .product("WilsKeeb")
-        .serial_number(env!("CARGO_PKG_VERSION"))
+        .serial_number("Dev Environment")
         .supports_remote_wakeup(true)
         .device_class(0)
         .device_sub_class(0)
@@ -379,18 +297,8 @@ async fn usb_app<'a>(
 
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
-    let mut state = usb_dev.state();
     loop {
-        utils_async::_yield().await;
-        let new_state = usb_dev.state();
-        if state != new_state {
-            defmt::info!(
-                "{} {}",
-                defmt::Debug2Format(&state),
-                defmt::Debug2Format(&new_state)
-            );
-            state = new_state;
-        }
+        utils_async::wait_for(timer, 10.micros()).await;
 
         #[cfg(feature = "cli")]
         if let Ok(mut usb_serial) = usb_serial.try_borrow_mut() {
@@ -461,27 +369,26 @@ async fn usb_app<'a>(
 async fn cli_app<'a>(
     timer: &Timer,
     usb_serial: &UsbSerialCell<'a>,
-    source: Source,
     mut consumer: defmt_bbq::DefmtConsumer,
 ) {
-    const CLI_PERIOD: MicrosDurationU64 = CLI_FREQUENCY.into_duration();
+    const CLI_PERIOD: MicrosDurationU32 = CLI_FREQUENCY.into_duration();
 
-    let mut next_scan_at = MicrosDurationU64::from_ticks(timer.get_counter()) + CLI_PERIOD;
+    let mut next_scan_at = timer.get_counter() + CLI_PERIOD;
     loop {
         next_scan_at = utils_async::wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
-        cli::update(usb_serial, source, &mut consumer);
+        cli::update(usb_serial, &mut consumer);
     }
 }
 #[cfg(all(feature = "cli", not(feature = "debug-to-cli")))]
-async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>, source: Source) {
-    const CLI_PERIOD: MicrosDurationU64 = CLI_FREQUENCY.into_duration();
+async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>) {
+    const CLI_PERIOD: MicrosDurationU32 = CLI_FREQUENCY.into_duration();
 
-    let mut next_scan_at = MicrosDurationU64::from_ticks(timer.get_counter()) + CLI_PERIOD;
+    let mut next_scan_at = timer.get_counter() + CLI_PERIOD;
     loop {
         next_scan_at = utils_async::wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
-        cli::update(usb_serial, source);
+        cli::update(usb_serial);
     }
 }
 
@@ -510,7 +417,7 @@ async fn ui_app(
         Pin<bank0::Gpio16, PullDownDisabled>,
         Pin<bank0::Gpio17, PullDownDisabled>,
     ),
-    system_clock_freq: HertzU32,
+    system_clock: &rp2040_hal::clocks::SystemClock,
 ) {
     let (mut pio0, pio0sm0, sda, scl) = oled;
     let _oled_display = i2c_pio::I2C::new(
@@ -519,32 +426,31 @@ async fn ui_app(
         scl.into_pull_up_disabled(),
         pio0sm0,
         400_000.Hz(),
-        system_clock_freq,
+        system_clock.freq(),
     );
     let (mut pio1, pio1sm0, neopixel, pio1sm1, strip) = leds;
     let mut neopixel = ws2812_pio::Ws2812::new(
         neopixel.into_mode(),
         &mut pio1,
         pio1sm0,
-        system_clock_freq,
+        system_clock.freq(),
         timer.count_down(),
     );
     let _led_strip = ws2812_pio::Ws2812::new(
         strip.into_mode(),
         &mut pio1,
         pio1sm1,
-        system_clock_freq,
+        system_clock.freq(),
         timer.count_down(),
     );
-    let mut timestamp = MicrosDurationU64::from_ticks(timer.get_counter());
+    let mut timestamp = timer.get_counter();
     for wheel_pos in (0..=255).cycle() {
-        let now = utils_async::wait_until(timer, timestamp + 40_000u64.micros()).await;
+        defmt::info!("ui task heart beat");
+        timestamp = utils_async::wait_until(timer, timestamp + 40_000.micros()).await;
 
         neopixel
             .write(brightness(once(wheel(wheel_pos)), 25))
             .expect("Failed to set neopixel's color");
-
-        timestamp = now;
     }
 }
 
@@ -567,7 +473,7 @@ fn wheel(mut wheel_pos: u8) -> RGB8 {
     }
 }
 
-#[cortex_m_rt::entry]
+#[sparkfun_pro_micro_rp2040::entry]
 fn main() -> ! {
     let mut pac = pac::Peripherals::take().unwrap();
     let _core = pac::CorePeripherals::take().unwrap();
@@ -575,9 +481,20 @@ fn main() -> ! {
     let sio = Sio::new(pac.SIO);
 
     // External high-speed crystal on the pico board is 12Mhz
-    let external_xtal_freq_hz = 12_000_000u32;
+    //pac.CLOCKS.sleep_en0.modify(|_, w| {
+    //    w.clk_sys_pio0()
+    //        .set_bit()
+    //        .clk_sys_pio1()
+    //        .set_bit()
+    //        .clk_sys_jtag()
+    //        .set_bit()
+    //        .clk_sys_pll_usb()
+    //        .set_bit()
+    //        .clk_sys_i2c0()
+    //        .set_bit()
+    //});
     let clocks = rp2040_hal::clocks::init_clocks_and_plls(
-        external_xtal_freq_hz,
+        sparkfun_pro_micro_rp2040::XOSC_CRYSTAL_FREQ,
         pac.XOSC,
         pac.CLOCKS,
         pac.PLL_SYS,
@@ -595,12 +512,6 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    #[allow(unused_unsafe)]
-    unsafe {
-        // prime the spinlock used to sync both cores by atomic-polyfill
-        (*pac::SIO::ptr()).spinlock[31].write_with_zero(|w| w.bits(1));
-    }
-
     #[cfg(feature = "debug-to-cli")]
     let consumer = defmt_bbq::init().unwrap();
 
@@ -613,19 +524,23 @@ fn main() -> ! {
     // GPIO25: WS2812 onboard addressable rgb (pio0-sm0)
     // GPIO29: right_nleft: high = right half
 
-    let side = read_side(pins.gpio29);
+    use embedded_hal::digital::blocking::InputPin;
+    let pin = pins.gpio29.into_pull_up_input(); // setup pull-up input
+    let is_right = pin.is_high().unwrap_or_else(|_| unreachable!()); // Cannot fail
+    pin.into_pull_down_disabled(); // reset the pin to its default status.
+    IS_RIGHT.store(is_right, Ordering::Relaxed);
 
     let runtime = nostd_async::Runtime::new();
 
     let board = BlackBoard {
-        side,
         usb_state: AtomicU8::new(UsbDeviceState::Default as u8),
         is_main_half: AtomicBool::new(false),
         scanned: RefCell::new(ArrayDeque::new()),
         to_usb: RefCell::new(ArrayDeque::new()),
     };
 
-    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
+    let mut timer = Timer::new(pac.TIMER, &mut pac.RESETS);
+    let alarm0 = timer.alarm_0().unwrap_or_else(|| unreachable!());
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
         pac.USBCTRL_REGS,
         pac.USBCTRL_DPRAM,
@@ -634,7 +549,7 @@ fn main() -> ! {
         &mut pac.RESETS,
     ));
 
-    let theclock = utils_time::MyClock(&timer);
+    let theclock = MyClock(&timer);
     let keyboard_hid = UsbHidClassBuilder::new()
         .add_interface(NKROBootKeyboardInterface::default_config(&theclock))
         .build(&usb_bus);
@@ -643,7 +558,7 @@ fn main() -> ! {
     #[cfg(feature = "cli")]
     let usb_serial = RefCell::new(SerialPort::new_with_store(
         &usb_bus,
-        [0; 64],
+        [0; USB_SERIAL_RX_SZ],
         [0; USB_SERIAL_TX_SZ],
     ));
 
@@ -669,13 +584,15 @@ fn main() -> ! {
         ),
     );
 
-    let system_clock_freq = clocks.system_clock.freq();
+    let system_clock_freq = &clocks.system_clock;
     let neopixel = pins.gpio25;
     let led_strip = pins.gpio3;
     let (oled_sda, oled_scl) = (pins.gpio16, pins.gpio17);
     let (resets, i2c, sda, scl) = (pac.RESETS, pac.I2C0, pins.gpio0, pins.gpio1);
 
     use nostd_async::Task;
+    utils_async::init(alarm0);
+
     let mut inter_board_task = Task::new(inter_board_app(
         &board,
         system_clock_freq,
@@ -698,7 +615,6 @@ fn main() -> ! {
     let mut cli_task = Task::new(cli_app(
         &timer,
         &usb_serial,
-        side,
         #[cfg(feature = "debug-to-cli")]
         consumer,
     ));
@@ -716,6 +632,12 @@ fn main() -> ! {
     #[cfg(feature = "cli")]
     let _cli_hndl = cli_task.spawn(&runtime);
     let _ui_hndl = ui_task.spawn(&runtime);
+
+    unsafe {
+        rp2040_hal::pac::NVIC::unpend(rp2040_hal::pac::Interrupt::TIMER_IRQ_0);
+        rp2040_hal::pac::NVIC::unmask(rp2040_hal::pac::Interrupt::TIMER_IRQ_0);
+    }
+
     usb_hndl.join();
 
     unreachable!("The USB task shall never end");

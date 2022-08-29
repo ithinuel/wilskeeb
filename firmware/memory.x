@@ -1,8 +1,7 @@
 MEMORY {
     BOOT2 : ORIGIN = 0x10000000, LENGTH = 0x100
     FLASH : ORIGIN = 0x10000100, LENGTH = 2048K - 0x100
-    RAM   : ORIGIN = 0x20000000, LENGTH = 255K
-    PANIC : ORIGIN = 0x20000000 + 255K, LENGTH = 1K
+    RAM   : ORIGIN = 0x20000000, LENGTH = 256K
 }
 
 SECTIONS {
@@ -14,5 +13,11 @@ SECTIONS {
 
 } INSERT BEFORE .text;
 
-_panic_dump_start = ORIGIN(PANIC);
-_panic_dump_end   = ORIGIN(PANIC) + LENGTH(PANIC);
+SECTIONS {
+    .panic_dump (NOLOAD):
+    {
+        _panic_dump_start = .;
+        . = _panic_dump_start + 1K;
+        _panic_dump_end = .;
+    } > RAM
+} 

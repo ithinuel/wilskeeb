@@ -500,6 +500,7 @@ version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab17bb279def6720d058cb6c052249938e7f99260ab534879281a95367a87e5"
 dependencies = [
+ "defmt",
  "gcd",
 ]
 
@@ -635,8 +636,6 @@ dependencies = [
 [[package]]
 name = "i2c-pio"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2508bcce1400673105eeae0728967e15a780b57244bfc5d7fefbb4fbd2838add"
 dependencies = [
  "cortex-m",
  "embedded-hal 0.2.7",
@@ -1265,8 +1264,6 @@ dependencies = [
 [[package]]
 name = "rp2040-hal"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f919d0d3c64fd9c7642dac2267a55d6aa1667e45329e8605a3858727acc7711"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -1291,10 +1288,7 @@ dependencies = [
 [[package]]
 name = "rp2040-hal-macros"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86479063e497efe1ae81995ef9071f54fd1c7427e04d6c5b84cde545ff672a5e"
 dependencies = [
- "cortex-m-rt",
  "proc-macro2",
  "quote",
  "syn",
@@ -1413,6 +1407,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebf6d833fa93f16a1c1874e62c2aebe8567e5bdd436d59bf543ed258b6f7a8e3"
 dependencies = [
  "rgb",
+]
+
+[[package]]
+name = "sparkfun-pro-micro-rp2040"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3720347c9c99aad3e74e99781f3aabbf327070bc2511383cfd0bb189c25735e"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "embedded-hal 0.2.7",
+ "rp2040-boot2",
+ "rp2040-hal",
 ]
 
 [[package]]
@@ -1567,10 +1574,10 @@ dependencies = [
  "panic-probe",
  "panic-reset",
  "rp2040-async-i2c",
- "rp2040-boot2",
  "rp2040-hal",
  "sh1107",
  "smart-leds",
+ "sparkfun-pro-micro-rp2040",
  "static_assertions",
  "usb-device",
  "usbd-human-interface-device",
@@ -1603,8 +1610,6 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 [[package]]
 name = "ws2812-pio"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f6b70348b302674e58f0891b78c4d3bcff6675d9d3110f8c04569882267ee29"
 dependencies = [
  "cortex-m",
  "embedded-hal 0.2.7",

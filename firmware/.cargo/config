@@ -3,7 +3,7 @@ runner = "elf2uf2-rs -d"
 #runner = "probe-run --chip RP2040"
 
 rustflags = [
-  #"-C", "linker=flip-link",
+  "-C", "linker=flip-link",
   "-C", "link-arg=--nmagic",
   "-C", "link-arg=-Tlink.x",
 
@@ -19,5 +19,5 @@ rustflags = [
 target = "thumbv6m-none-eabi"
 
 [env]
-DEFMT_BBQ_BUFFER_SIZE = "4096"
+DEFMT_BBQ_BUFFER_SIZE = "16384"
 DEFMT_LOG = "trace"
