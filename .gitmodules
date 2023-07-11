@@ -1,9 +1,9 @@
 [submodule "crides-choc"]
 	path = pcb/lib/choc
-	url = https://github.com/crides/choc.git
+	url = https://github.com/ithinuel/choc.git
 [submodule "madworm-ws2812b.pretty"]
 	path = pcb/lib/WS2812B.pretty
-	url = https://github.com/madworm/WS2812B.pretty.git
+	url = https://github.com/ithinuel/WS2812B.pretty.git
 [submodule "sh1107"]
 	path = vendor/sh1107-rs
 	url = git@github.com:ithinuel/sh1107-rs.git
@@ -19,3 +19,15 @@
 [submodule "ws2812-pio"]
 	path = vendor/ws2812-pio-rs
 	url = https://github.com/ithinuel/i2c-pio-rs
+[submodule "nostd_async"]
+	path = vendor/nostd_async
+	url = git@github.com:ithinuel/nostd_async.git
+[submodule "keyberon"]
+	path = vendor/keyberon
+	url = git@github.com:ithinuel/keyberon.git
+[submodule "boards"]
+	path = vendor/boards
+	url = git@github.com:rp-rs/rp-hal-boards.git
+[submodule "usb-device"]
+	path = vendor/usb-device
+	url = git@github.com:rust-embedded-community/usb-device.git

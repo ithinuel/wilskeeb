@@ -13,67 +13,68 @@ keywords = ["keyboard", "rp2040", "keyberon"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cortex-m = "0.7.6"
-cortex-m-rt = "0.7.1"
-critical-section = "1.1.0"
+cortex-m = { version = "0.7.7", features = ["inline-asm"] }
+cortex-m-rt = "0.7.3"
+critical-section = "1.1.1"
 
 panic-probe = { version = "0.3.0", features = ["print-defmt"], optional = true }
 panic-persist = { version = "0.3.0", optional = true }
 panic-reset = { version = "0.1.1", optional = true }
 
-embedded-hal = { version = "=1.0.0-alpha.8", features = [] }
-embedded-hal-async = "=0.1.0-alpha.1"
+embedded-hal = { version = "1.0.0-alpha.11" }
+embedded-hal-async = "0.2.0-alpha.2"
 embedded-time = "0.12.1"
 fugit = { version = "0.3.6", features = ["defmt"] }
 
 # rp2040 hal & drivers
-sparkfun-pro-micro-rp2040 = "0.4.0"
-rp2040-async-i2c = { git = "https://github.com/ithinuel/rp2040-async-i2c" }
-rp2040-hal = { version = "0.6.0", features = [
-  "rt",
+sparkfun-pro-micro-rp2040 = "0.6.0"
+rp2040-async-i2c = { version = "0.1.0", features = ["pio"] }
+rp2040-hal = { version = "0.9.0-alpha.1", features = [
   "eh1_0_alpha",
   "rp2040-e5",
 ], default-features = false }
 
 # UI deps
-adafruit-featherwing-oled128x64 = { git = "https://github.com/ithinuel/sh1107-rs" }
+adafruit-featherwing-oled128x64 = { version = "0.1.0", features = [
+  "embedded-graphics",
+] }
 embedded-graphics = "0.7.1"
-i2c-pio = "0.4.0"
-sh1107 = { git = "https://github.com/ithinuel/sh1107-rs" }
-smart-leds = "0.3.0"
-ws2812-pio = "0.4.0"
+embedded-layout = "0.2.0"
+sh1107 = "0.1.0"
+#smart-leds = {version =  "0.3.0", optional = true }
+ws2812-pio = {version= "0.6.0", optional = true }
 
 # async ftw
-futures = { version = "0.3.23", default-features = false, features = [
+futures = { version = "0.3.26", default-features = false, features = [
   "async-await",
 ] }
-nostd_async = { version = "0.6.0", features = ["cortex_m"] }
+nostd_async = { version = "0.6.1", features = ["cortex_m", "wfe"] }
 
 # usb related deps
-frunk = { version = "0.4.0", default-features = false }
-keyberon = { git = "https://github.com/TeXitoi/keyberon.git" }
-num_enum = { version = "0.5.7", default-features = false }
-usb-device = "0.2.9"
-usbd-human-interface-device = "0.2.1"
-usbd-serial = "0.1.1"
+frunk = { version = "0.4.1", default-features = false }
+keyberon = "0.2.0"
+num_enum = { version = "0.5.10", default-features = false }
+usb-device = { version = "0.2.9", features = ["defmt"] }
+usbd-human-interface-device = "0.3.1"
+usbd-serial = {version= "0.1.1" , optional = true}
 
 # logging
-bbqueue = { version = "0.5.1", features = ["thumbv6"] }
+bbqueue = { version = "0.5.1", features = ["thumbv6"], optional = true }
 defmt = { version = "0.3.2", optional = true }
 defmt-bbq = { version = "0.1.0", optional = true }
-defmt-rtt = { version = "0.3.2", optional = true }
+defmt-rtt = { version = "0.4.0", optional = true }
 
 # interkeyboard tools
-arraydeque = { version = "0.4.5", default-features = false }
+arraydeque = { version = "0.5", default-features = false }
 arrayvec = { version = "0.7.2", default-features = false }
-either = { version = "1.8.0", default-features = false }
+either = { version = "1.8.1", default-features = false }
 static_assertions = "1.1.0"
 
 [dev-dependencies]
-embedded-graphics-simulator = "0.3.0"
+embedded-graphics-simulator = "0.4.0"
 
 [profile.release]
-debug = 1         # skip line info for cleaner probe-run output
+debug = 2         # skip line info for cleaner probe-run output
 lto = "fat"
 codegen-units = 1
 panic = "abort"
@@ -89,14 +90,13 @@ debug-to-cli = ["cli", "defmt-bbq", "debug", "panic-persist"]
 debug = ["defmt", "rp2040-hal/defmt"]
 
 [patch.crates-io]
-bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }
-rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
-ws2812-pio = { path = "../vendor/ws2812-pio-rs" }
-i2c-pio = { path = "../vendor/i2c-pio-rs" }
-
-[patch.'https://github.com/ithinuel/rp2040-async-i2c']
-rp2040-async-i2c = { path = "../vendor/rp2040-async-i2c" }
-
-[patch.'https://github.com/ithinuel/sh1107-rs']
-sh1107 = { path = "../vendor/sh1107-rs/sh1107" }
 adafruit-featherwing-oled128x64 = { path = "../vendor/sh1107-rs/adafruit-featherwing-oled128x64" }
+bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }
+keyberon = { path = "../vendor/keyberon" }
+rp2040-async-i2c = { path = "../vendor/rp2040-async-i2c" }
+rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
+sh1107 = { path = "../vendor/sh1107-rs/sh1107" }
+sparkfun-pro-micro-rp2040 = { path = "../vendor/boards/boards/sparkfun-pro-micro-rp2040" }
+ws2812-pio = { path = "../vendor/ws2812-pio-rs" }
+heapless = { git = "https://github.com/japaric/heapless" }
+usb-device = { path = "../vendor/usb-device" }

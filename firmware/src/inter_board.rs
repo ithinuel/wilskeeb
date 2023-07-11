@@ -20,7 +20,7 @@ use fugit::{ExtU32, HertzU32, MicrosDurationU32};
 use keyberon::layout::Event;
 use rp2040_hal::{
     clocks::SystemClock,
-    gpio::{bank0, FunctionI2C, Pin},
+    gpio::{bank0, FunctionI2C, Pin, PullUp},
     pac,
     timer::Timer,
 };
@@ -35,8 +35,8 @@ mod main;
 mod secondary;
 
 type Pins = (
-    Pin<bank0::Gpio0, FunctionI2C>,
-    Pin<bank0::Gpio1, FunctionI2C>,
+    Pin<bank0::Gpio0, FunctionI2C, PullUp>,
+    Pin<bank0::Gpio1, FunctionI2C, PullUp>,
 );
 
 /// I2C address for inter keyboard communication.

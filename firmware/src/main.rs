@@ -1,7 +1,8 @@
 #![doc = include_str!("../../README.md")]
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
+#![allow(incomplete_features)]
+#![feature(async_fn_in_trait, type_alias_impl_trait, impl_trait_in_assoc_type)]
 
 #[cfg(any(
     all(feature = "debug-to-probe", feature = "debug-to-cli"),
@@ -14,12 +15,15 @@ compile_error!(
     "Only one feature of \"debug-to-probe\" or \"debug-to-cli\" must be enabled for this create"
 );
 
+#[cfg(all(feature = "default", feature = "debug"))]
+compile_error!("Default features must be disabled while building with debug support");
+
 use core::{
     cell::RefCell,
-    iter::once,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
+use critical_section::Mutex;
 #[cfg(feature = "debug-to-probe")]
 use panic_probe as _;
 #[cfg(not(any(feature = "debug-to-probe", feature = "debug-to-cli")))]
@@ -28,29 +32,28 @@ use panic_reset as _;
 #[cfg(feature = "debug-to-probe")]
 use defmt_rtt as _;
 
-use fugit::{ExtU32, HertzU32, MicrosDurationU32, RateExtU32, TimerInstantU64};
+use fugit::{ExtU32, HertzU32, MicrosDurationU32, TimerInstantU64};
 
 use rp2040_hal::{
-    gpio::{bank0, Pin, Pins, PullDownDisabled},
+    gpio::{bank0, Pin, Pins, PullDown, FunctionNull},
+    multicore::{Multicore, Stack},
     pac,
-    pio::{self, PIOExt},
     sio::Sio,
     timer::Timer,
     usb::UsbBus,
     watchdog::Watchdog,
-    Clock,
 };
 
 use frunk::hlist::{HCons, HNil};
 use usb_device::{
     bus::UsbBusAllocator,
     class::UsbClass as _,
-    device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid},
+    device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid, UsbRev},
 };
 use usbd_human_interface_device::{
-    device::keyboard::NKROBootKeyboardInterface,
+    //device::keyboard::NKROBootKeyboardInterface,
+    device::keyboard::BootKeyboardInterface,
     hid_class::{UsbHidClass, UsbHidClassBuilder},
-    page::Keyboard,
     UsbHidError,
 };
 #[cfg(feature = "cli")]
@@ -62,8 +65,6 @@ use keyberon::{
     debounce::Debouncer,
     layout::{CustomEvent, Event, Layout},
 };
-use num_enum::FromPrimitive;
-use smart_leds::{brightness, SmartLedsWrite, RGB8};
 
 #[cfg(not(feature = "debug"))]
 mod defmt {
@@ -97,12 +98,10 @@ mod cli;
 mod inter_board;
 mod layout;
 mod matrix;
-//mod ui;
+mod ui;
 mod utils_async;
-mod utils_time;
 
 use layout::CustomAction;
-use utils_time::MyClock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "debug", derive(defmt::Format))]
@@ -124,21 +123,39 @@ impl core::ops::Not for Source {
 const SCANNED_STACK_SZ: usize = 16;
 const TO_USB_STACK_SZ: usize = 32;
 
-type ScannedEventStack = ArrayDeque<[Event; SCANNED_STACK_SZ], Saturating>;
-type ToUSBStack = ArrayDeque<[(Source, Event); TO_USB_STACK_SZ], Saturating>;
-type InterfaceList<'a> = HCons<NKROBootKeyboardInterface<'a, UsbBus, MyClock<'a>>, HNil>;
+type ScannedEventStack = ArrayDeque<Event, SCANNED_STACK_SZ, Saturating>;
+type ToUSBStack = ArrayDeque<(Source, Event), TO_USB_STACK_SZ, Saturating>;
+//type InterfaceList<'a> = HCons<NKROBootKeyboardInterface<'a, UsbBus>, HNil>;
+type InterfaceList<'a> = HCons<BootKeyboardInterface<'a, UsbBus>, HNil>;
 type MyUsbHidClass<'a> = UsbHidClass<UsbBus, InterfaceList<'a>>;
 #[cfg(feature = "cli")]
 type UsbSerialCell<'a> =
     RefCell<SerialPort<'a, UsbBus, [u8; USB_SERIAL_RX_SZ], [u8; USB_SERIAL_TX_SZ]>>;
 type TimerInstant = TimerInstantU64<1_000_000>;
 
+#[derive(Default)]
 struct BlackBoard {
     /// The use of that field is a bit ugly but `UsbDeviceState` is `repr(u8)` so it should be ok.
     usb_state: AtomicU8,
     is_main_half: AtomicBool,
     scanned: RefCell<ScannedEventStack>,
     to_usb: RefCell<ToUSBStack>,
+}
+
+/// Atomic BlackBoard
+type ABlackBoard = Mutex<RefCell<ABBInner>>;
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "debug", derive(defmt::Format))]
+struct ABBInner {
+    usb_state: UsbDeviceState,
+}
+impl ABBInner {
+    const fn new() -> Self {
+        Self {
+            usb_state: UsbDeviceState::Default,
+        }
+    }
 }
 
 /// USB VID/PID for a generic keyboard from <https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt>
@@ -225,8 +242,8 @@ async fn inter_board_app(
     board: &BlackBoard,
     system_clock: &rp2040_hal::clocks::SystemClock,
     i2c_block: pac::I2C0,
-    sda: Pin<bank0::Gpio0, PullDownDisabled>,
-    scl: Pin<bank0::Gpio1, PullDownDisabled>,
+    sda: Pin<bank0::Gpio0, FunctionNull, PullDown>,
+    scl: Pin<bank0::Gpio1, FunctionNull, PullDown>,
     resets: pac::RESETS,
     timer: &Timer,
 ) {
@@ -238,7 +255,7 @@ async fn inter_board_app(
         ..
     } = board;
 
-    let (mut sda, mut scl) = (sda.into_mode(), scl.into_mode());
+    let (mut sda, mut scl) = (sda.reconfigure(), scl.reconfigure());
     scl.set_slew_rate(rp2040_hal::gpio::OutputSlewRate::Slow);
     sda.set_slew_rate(rp2040_hal::gpio::OutputSlewRate::Slow);
     // Fix odd capacitor-like signal behavior
@@ -270,6 +287,7 @@ async fn inter_board_app(
 /// - Ticks the layout & generates HID reports
 async fn usb_app<'a>(
     board: &BlackBoard,
+    aboard: &ABlackBoard,
     timer: &Timer,
     usb_bus: &UsbBusAllocator<UsbBus>,
     mut keyboard_hid: MyUsbHidClass<'_>,
@@ -290,6 +308,7 @@ async fn usb_app<'a>(
         .device_protocol(0)
         .max_packet_size_0(64)
         .max_power(500)
+        .usb_rev(UsbRev::Usb200)
         .device_release(DEVICE_RELEASE);
     #[cfg(feature = "cli")]
     let builder = builder.composite_with_iads();
@@ -297,6 +316,7 @@ async fn usb_app<'a>(
 
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
+    let mut previous_state = usb_dev.state();
     loop {
         utils_async::wait_for(timer, 10.micros()).await;
 
@@ -313,7 +333,15 @@ async fn usb_app<'a>(
         }
 
         let usb_state = usb_dev.state();
-        board.usb_state.store(usb_state as u8, Ordering::Relaxed);
+        if usb_state != previous_state {
+            previous_state = usb_state;
+            defmt::info!("USBState: {:?}", defmt::Debug2Format(&usb_state));
+
+            board.usb_state.store(usb_state as u8, Ordering::Relaxed);
+            critical_section::with(|cs| {
+                aboard.borrow_ref_mut(cs).usb_state = usb_state;
+            });
+        }
 
         let _ = keyboard_hid.interface().read_report();
 
@@ -335,13 +363,11 @@ async fn usb_app<'a>(
             }
 
             // Collect key presses.
-            let keycodes: ArrayVec<_, 70> = layout
-                .keycodes()
-                .map(|k| Keyboard::from_primitive(k as u8))
-                .collect();
+            let keycodes: ArrayVec<_, 70> = layout.keycodes().collect();
+            let has_keycodes = !keycodes.is_empty();
 
             // Setup the report for the control channel
-            match keyboard_hid.interface().write_report(&keycodes) {
+            match keyboard_hid.interface().write_report(keycodes) {
                 Err(UsbHidError::WouldBlock) | Err(UsbHidError::Duplicate) | Ok(_) => {}
                 Err(e) => panic!("Failed to write keyboard report: {:?}", e),
             }
@@ -351,7 +377,7 @@ async fn usb_app<'a>(
             }
 
             // Wake the host.
-            if !keycodes.is_empty()
+            if !has_keycodes
                 && usb_state == UsbDeviceState::Suspend
                 && usb_dev.remote_wakeup_enabled()
             {
@@ -392,93 +418,17 @@ async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>) {
     }
 }
 
-/// User Interface task
-///
-/// Handles:
-/// - On pro-micro board's neopixel
-/// - LED1 neopixel strip
-/// - OLED Display
-///
-/// Reads status from the black board & updates the UI accordingly.
-#[allow(clippy::type_complexity)]
-async fn ui_app(
-    _board: &BlackBoard,
-    timer: &Timer,
-    leds: (
-        pio::PIO<pac::PIO0>,
-        pio::UninitStateMachine<pio::PIO0SM0>,
-        Pin<bank0::Gpio25, PullDownDisabled>,
-        pio::UninitStateMachine<pio::PIO0SM1>,
-        Pin<bank0::Gpio3, PullDownDisabled>,
-    ),
-    oled: (
-        pio::PIO<pac::PIO1>,
-        pio::UninitStateMachine<pio::PIO1SM0>,
-        Pin<bank0::Gpio16, PullDownDisabled>,
-        Pin<bank0::Gpio17, PullDownDisabled>,
-    ),
-    system_clock: &rp2040_hal::clocks::SystemClock,
-) {
-    let (mut pio0, pio0sm0, sda, scl) = oled;
-    let _oled_display = i2c_pio::I2C::new(
-        &mut pio0,
-        sda.into_pull_up_disabled(),
-        scl.into_pull_up_disabled(),
-        pio0sm0,
-        400_000.Hz(),
-        system_clock.freq(),
-    );
-    let (mut pio1, pio1sm0, neopixel, pio1sm1, strip) = leds;
-    let mut neopixel = ws2812_pio::Ws2812::new(
-        neopixel.into_mode(),
-        &mut pio1,
-        pio1sm0,
-        system_clock.freq(),
-        timer.count_down(),
-    );
-    let _led_strip = ws2812_pio::Ws2812::new(
-        strip.into_mode(),
-        &mut pio1,
-        pio1sm1,
-        system_clock.freq(),
-        timer.count_down(),
-    );
-    let mut timestamp = timer.get_counter();
-    for wheel_pos in (0..=255).cycle() {
-        defmt::info!("ui task heart beat");
-        timestamp = utils_async::wait_until(timer, timestamp + 40_000.micros()).await;
-
-        neopixel
-            .write(brightness(once(wheel(wheel_pos)), 25))
-            .expect("Failed to set neopixel's color");
-    }
-}
-
-/// Convert a number from `0..=255` to an RGB color triplet.
-///
-/// The colours are a transition from red, to green, to blue and back to red.
-fn wheel(mut wheel_pos: u8) -> RGB8 {
-    wheel_pos = 255 - wheel_pos;
-    if wheel_pos < 85 {
-        // No green in this sector - red and blue only
-        (255 - (wheel_pos * 3), 0, wheel_pos * 3).into()
-    } else if wheel_pos < 170 {
-        // No red in this sector - green and blue only
-        wheel_pos -= 85;
-        (0, wheel_pos * 3, 255 - (wheel_pos * 3)).into()
-    } else {
-        // No blue in this sector - red and green only
-        wheel_pos -= 170;
-        (wheel_pos * 3, 255 - (wheel_pos * 3), 0).into()
-    }
-}
-
 #[sparkfun_pro_micro_rp2040::entry]
 fn main() -> ! {
+    static mut CORE1_STACK: Stack<40960> = Stack::new();
+    static mut TIMER: Option<Timer> = None;
+    static ASBB: ABlackBoard = Mutex::new(RefCell::new(ABBInner::new()));
+    let aboard = &ASBB;
+
     let mut pac = pac::Peripherals::take().unwrap();
     let _core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
-    let sio = Sio::new(pac.SIO);
+    let mut sio = Sio::new(pac.SIO);
 
     // External high-speed crystal on the pico board is 12Mhz
     //pac.CLOCKS.sleep_en0.modify(|_, w| {
@@ -524,23 +474,23 @@ fn main() -> ! {
     // GPIO25: WS2812 onboard addressable rgb (pio0-sm0)
     // GPIO29: right_nleft: high = right half
 
-    use embedded_hal::digital::blocking::InputPin;
+    use embedded_hal::digital::InputPin;
     let pin = pins.gpio29.into_pull_up_input(); // setup pull-up input
+    /// give a little bit of time for the pull-up to do its job.
+    cortex_m::asm::delay(500);
     let is_right = pin.is_high().unwrap_or_else(|_| unreachable!()); // Cannot fail
     pin.into_pull_down_disabled(); // reset the pin to its default status.
+    defmt::info!("I am the {} side", if is_right { "right" } else { "left" });
     IS_RIGHT.store(is_right, Ordering::Relaxed);
 
-    let runtime = nostd_async::Runtime::new();
 
-    let board = BlackBoard {
-        usb_state: AtomicU8::new(UsbDeviceState::Default as u8),
-        is_main_half: AtomicBool::new(false),
-        scanned: RefCell::new(ArrayDeque::new()),
-        to_usb: RefCell::new(ArrayDeque::new()),
-    };
+    let board = Default::default();
 
-    let mut timer = Timer::new(pac.TIMER, &mut pac.RESETS);
+    let mut timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
     let alarm0 = timer.alarm_0().unwrap_or_else(|| unreachable!());
+    *TIMER = Some(timer);
+    let timer = TIMER.as_ref().unwrap();
+
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
         pac.USBCTRL_REGS,
         pac.USBCTRL_DPRAM,
@@ -549,9 +499,9 @@ fn main() -> ! {
         &mut pac.RESETS,
     ));
 
-    let theclock = MyClock(&timer);
     let keyboard_hid = UsbHidClassBuilder::new()
-        .add_interface(NKROBootKeyboardInterface::default_config(&theclock))
+        //.add_interface(NKROBootKeyboardInterface::default_config())
+        .add_interface(BootKeyboardInterface::default_config())
         .build(&usb_bus);
 
     // This needs to be the last class to be defined.
@@ -562,6 +512,7 @@ fn main() -> ! {
         [0; USB_SERIAL_TX_SZ],
     ));
 
+    use rp2040_hal::pio::PIOExt;
     let (pio0, pio0sm0, pio0sm1, ..) = pac.PIO0.split(&mut pac.RESETS);
     let (pio1, pio1sm0, ..) = pac.PIO1.split(&mut pac.RESETS);
 
@@ -576,15 +527,14 @@ fn main() -> ! {
             pins.gpio9.into_pull_up_input(),
         ),
         (
-            pins.gpio28.into_readable_output(),
-            pins.gpio21.into_readable_output(),
-            pins.gpio23.into_readable_output(),
-            pins.gpio20.into_readable_output(),
-            pins.gpio22.into_readable_output(),
+            pins.gpio28.reconfigure(),
+            pins.gpio21.reconfigure(),
+            pins.gpio23.reconfigure(),
+            pins.gpio20.reconfigure(),
+            pins.gpio22.reconfigure(),
         ),
     );
 
-    let system_clock_freq = &clocks.system_clock;
     let neopixel = pins.gpio25;
     let led_strip = pins.gpio3;
     let (oled_sda, oled_scl) = (pins.gpio16, pins.gpio17);
@@ -595,17 +545,18 @@ fn main() -> ! {
 
     let mut inter_board_task = Task::new(inter_board_app(
         &board,
-        system_clock_freq,
+        &clocks.system_clock,
         i2c,
         sda,
         scl,
         resets,
-        &timer,
+        timer,
     ));
-    let mut scan_task = Task::new(scan_app(&board, &timer, matrix));
+    let mut scan_task = Task::new(scan_app(&board, timer, matrix));
     let mut usb_task = Task::new(usb_app(
         &board,
-        &timer,
+        &aboard,
+        timer,
         &usb_bus,
         keyboard_hid,
         #[cfg(feature = "cli")]
@@ -613,25 +564,41 @@ fn main() -> ! {
     ));
     #[cfg(feature = "cli")]
     let mut cli_task = Task::new(cli_app(
-        &timer,
+        timer,
         &usb_serial,
         #[cfg(feature = "debug-to-cli")]
         consumer,
     ));
-    let mut ui_task = Task::new(ui_app(
-        &board,
-        &timer,
-        (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
-        (pio1, pio1sm0, oled_sda, oled_scl),
-        system_clock_freq,
-    ));
+    use rp2040_hal::Clock;
+    let system_clock_freq = clocks.system_clock.freq();
 
+    // delegate ui to second core
+    let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
+    let core1 = &mut mc.cores()[1];
+    core1
+        .spawn(&mut CORE1_STACK.mem, move || {
+            defmt::trace!("Hi from the second core!");
+            let mut runtime = nostd_async::Runtime::new();
+            let mut ui_task = Task::new(ui::ui_app(
+                aboard,
+                timer,
+                (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
+                (pio1, pio1sm0, oled_sda, oled_scl),
+                system_clock_freq,
+            ));
+
+            let ui_hndl = ui_task.spawn(&mut runtime);
+            ui_hndl.join();
+            unreachable!("The UI task shall never end");
+        })
+        .expect("Unable to start second core's thread.");
+
+    let runtime = nostd_async::Runtime::new();
     let _inter_board_hndl = inter_board_task.spawn(&runtime);
     let _scan_hndl = scan_task.spawn(&runtime);
     let usb_hndl = usb_task.spawn(&runtime);
     #[cfg(feature = "cli")]
     let _cli_hndl = cli_task.spawn(&runtime);
-    let _ui_hndl = ui_task.spawn(&runtime);
 
     unsafe {
         rp2040_hal::pac::NVIC::unpend(rp2040_hal::pac::Interrupt::TIMER_IRQ_0);

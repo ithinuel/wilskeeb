@@ -1,21 +1,10 @@
 use core::marker::PhantomData;
 use std::cell::RefCell;
-trait PixelColor: Copy + PartialEq<Self> {}
-trait DrawTarget {
-    type Color: PixelColor;
-    type Error;
-}
-trait Drawable {
-    type Color: PixelColor;
-    type Output;
-    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, <D as DrawTarget>::Error>
-    where
-        D: DrawTarget<Color = Self::Color>;
-}
 
-#[derive(Copy, PartialEq, Clone)]
-struct BinaryColor;
-impl PixelColor for BinaryColor {}
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::BinaryColor, Drawable};
+use frunk::HCons;
+use frunk::HList;
+use frunk::HNil;
 
 trait Widget: Drawable {
     type Event;
@@ -27,10 +16,19 @@ enum CarouselEvent {
     Next,
     Select,
 }
-struct Carousel<T: Widget, const SZ: usize> {
-    el: [T; SZ],
+struct Carousel<ElementList> {
+    el: ElementList,
     selected: usize,
     entered: bool,
+}
+impl Carousel<HNil> {
+    const fn new() -> Self {
+        Self {
+            el: HNil,
+            selected: 0,
+            entered: 0,
+        }
+    }
 }
 impl<T: Widget, const SZ: usize> Drawable for Carousel<T, SZ> {
     type Color = BinaryColor;
@@ -105,7 +103,7 @@ fn main() {
         fn into(self) -> CarouselEvent {
             match self {
                 UIEvent::Next => CarouselEvent::Next,
-                UIEvent::Select => CarouselEvent::Select
+                UIEvent::Select => CarouselEvent::Select,
             }
         }
     }
@@ -139,4 +137,3 @@ fn main() {
     ui.update(UIEvent::Next); // grow slider
     ui.update(UIEvent::Select); // exit slider
 }
-

@@ -17,7 +17,7 @@ use super::EventWrapper;
 
 struct Timeout;
 pub struct Main {
-    i2c: rp2040_async_i2c::AsyncI2C<pac::I2C0, Pins>,
+    i2c: rp2040_async_i2c::i2c::I2C<pac::I2C0, Pins>,
     attached: bool,
 }
 #[cfg(feature = "debug")]
@@ -34,7 +34,7 @@ impl Main {
         resets: &mut pac::RESETS,
         system_clock: &rp2040_hal::clocks::SystemClock,
     ) -> Self {
-        let mut i2c = rp2040_async_i2c::AsyncI2C::new(
+        let mut i2c = rp2040_async_i2c::i2c::I2C::new(
             i2c_block,
             sda,
             scl,
@@ -42,7 +42,7 @@ impl Main {
             resets,
             system_clock.freq(),
         );
-        i2c.set_waker_setter(utils_async::waker_setter);
+        i2c.set_waker_setter(utils_async::i2c0_waker_setter);
         unsafe {
             rp2040_hal::pac::NVIC::unpend(rp2040_hal::pac::Interrupt::I2C0_IRQ);
             rp2040_hal::pac::NVIC::unmask(rp2040_hal::pac::Interrupt::I2C0_IRQ);

@@ -4,25 +4,25 @@
 
 use embedded_graphics::{
     image::{Image, ImageRaw},
-    pixelcolor::{raw::BigEndian, BinaryColor},
+    pixelcolor::BinaryColor,
     prelude::*,
     primitives::{
-        Circle, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle,
-        StrokeAlignment, StyledDrawable, Triangle,
+        PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle, StrokeAlignment,
+        StyledDrawable,
     },
-    text::{Alignment, Text},
 };
 use embedded_graphics_simulator::{
     BinaryColorTheme, OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
 
+#[allow(dead_code)]
 mod gui {
     struct Carousel {
         a: (),
     }
 }
 
-const IMAGE: [u8; 1024] = {
+const _IMAGE: [u8; 1024] = {
     let mut img = [0; 1024];
     let source = include_bytes!("./assets/source.bmp");
     let header_len = 62;
@@ -58,6 +58,18 @@ const IMAGE2: [u8; 1024] = {
     }
     img
 };
+const SPRITES: ImageRaw<'static, BinaryColor> = ImageRaw::new_binary(&IMAGE2, 64);
+const SPRITE_MAP: [((i32, i32), (u32, u32)); 9] = [
+    ((0, 0), (16, 16)),
+    ((16, 0), (16, 16)),
+    ((32, 0), (16, 16)),
+    ((0, 16), (16, 16)),
+    ((16, 16), (16, 16)),
+    ((32, 16), (16, 16)),
+    ((3, 32), (58, 32)),
+    ((3, 64), (58, 32)),
+    ((3, 96), (58, 32)),
+];
 
 fn main() -> Result<(), std::convert::Infallible> {
     // Create a new simulator display with 128x64 pixels.
@@ -76,21 +88,9 @@ fn main() -> Result<(), std::convert::Infallible> {
 
     //let yoffset = 14;
 
-    let sprites = ImageRaw::<_, BigEndian>::new(&IMAGE2, 64);
-    let sprite_map = [
-        ((0, 0), (16, 16)),
-        ((16, 0), (16, 16)),
-        ((32, 0), (16, 16)),
-        ((0, 16), (16, 16)),
-        ((16, 16), (16, 16)),
-        ((32, 16), (16, 16)),
-        ((3, 32), (58, 32)),
-        ((3, 64), (58, 32)),
-        ((3, 96), (58, 32)),
-    ];
-    let sprites = sprite_map
+    let sprites = SPRITE_MAP
         .into_iter()
-        .map(|(point, size)| sprites.sub_image(&Rectangle::new(point.into(), size.into())))
+        .map(|(point, size)| SPRITES.sub_image(&Rectangle::new(point.into(), size.into())))
         .collect::<Vec<_>>();
 
     let link_pt = Point::new(3, 3);
@@ -98,7 +98,7 @@ fn main() -> Result<(), std::convert::Infallible> {
 
     let usb = &sprites[0];
     let usb_i2cl = &sprites[1];
-    let not_attached = &sprites[3];
+    let _not_attached = &sprites[3];
     let mode_abc = &sprites[6];
     let mode_123 = &sprites[8];
 

@@ -1,5 +1,5 @@
-use embedded_hal::digital::{blocking::OutputPin, PinState};
-use rp2040_hal::gpio::{bank0, Output, Pin, PullUpInput, Readable};
+use embedded_hal::digital::{OutputPin, PinState};
+use rp2040_hal::gpio::{bank0, FunctionSioOutput, Pin, FunctionSioInput, PullUp, PullNone};
 
 const ROW_MASK: u32 = 0b11_1111_0100;
 #[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
@@ -35,20 +35,20 @@ impl<'a> IntoIterator for &'a Row {
     }
 }
 type Cols = (
-    Pin<bank0::Gpio2, PullUpInput>,
-    Pin<bank0::Gpio4, PullUpInput>,
-    Pin<bank0::Gpio5, PullUpInput>,
-    Pin<bank0::Gpio6, PullUpInput>,
-    Pin<bank0::Gpio7, PullUpInput>,
-    Pin<bank0::Gpio8, PullUpInput>,
-    Pin<bank0::Gpio9, PullUpInput>,
+    Pin<bank0::Gpio2, FunctionSioInput, PullUp>,
+    Pin<bank0::Gpio4, FunctionSioInput, PullUp>,
+    Pin<bank0::Gpio5, FunctionSioInput, PullUp>,
+    Pin<bank0::Gpio6, FunctionSioInput, PullUp>,
+    Pin<bank0::Gpio7, FunctionSioInput, PullUp>,
+    Pin<bank0::Gpio8, FunctionSioInput, PullUp>,
+    Pin<bank0::Gpio9, FunctionSioInput, PullUp>,
 );
 type Rows = (
-    Pin<bank0::Gpio28, Output<Readable>>,
-    Pin<bank0::Gpio21, Output<Readable>>,
-    Pin<bank0::Gpio23, Output<Readable>>,
-    Pin<bank0::Gpio20, Output<Readable>>,
-    Pin<bank0::Gpio22, Output<Readable>>,
+    Pin<bank0::Gpio28, FunctionSioOutput, PullNone>,
+    Pin<bank0::Gpio21, FunctionSioOutput, PullNone>,
+    Pin<bank0::Gpio23, FunctionSioOutput, PullNone>,
+    Pin<bank0::Gpio20, FunctionSioOutput, PullNone>,
+    Pin<bank0::Gpio22, FunctionSioOutput, PullNone>,
 );
 pub struct Matrix {
     _cols: Cols,
@@ -79,14 +79,13 @@ impl Matrix {
         let mut keys = MatrixState::default();
 
         // SAFETY: We're only doing atomic read and only interested in the pins we own
-        let sio = unsafe { &*rp2040_hal::pac::SIO::ptr() };
         for (idx, key) in keys.0.iter_mut().enumerate() {
             self.set(idx, PinState::Low);
 
             // experimentally measured to generate a ~1200ns delay between 2 iterations.
             cortex_m::asm::delay(40);
 
-            key.0 = sio.gpio_in.read().bits() & ROW_MASK;
+            key.0 = rp2040_hal::sio::Sio::read_bank0() & ROW_MASK;
 
             self.set(idx, PinState::High);
         }
