@@ -1,8 +1,7 @@
 #![doc = include_str!("../../README.md")]
 #![no_std]
 #![no_main]
-#![allow(incomplete_features)]
-#![feature(async_fn_in_trait, type_alias_impl_trait, impl_trait_in_assoc_type)]
+#![feature(impl_trait_in_assoc_type)]
 
 #[cfg(any(
     all(feature = "debug-to-probe", feature = "debug-to-cli"),
@@ -35,7 +34,7 @@ use defmt_rtt as _;
 use fugit::{ExtU32, HertzU32, MicrosDurationU32, TimerInstantU64};
 
 use rp2040_hal::{
-    gpio::{bank0, Pin, Pins, PullDown, FunctionNull},
+    gpio::{bank0, FunctionNull, Pin, Pins, PullDown},
     multicore::{Multicore, Stack},
     pac,
     sio::Sio,
@@ -48,12 +47,12 @@ use frunk::hlist::{HCons, HNil};
 use usb_device::{
     bus::UsbBusAllocator,
     class::UsbClass as _,
-    device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid, UsbRev},
+    device::{UsbDeviceBuilder, UsbDeviceState, UsbRev, UsbVidPid},
 };
 use usbd_human_interface_device::{
-    //device::keyboard::NKROBootKeyboardInterface,
-    device::keyboard::BootKeyboardInterface,
-    hid_class::{UsbHidClass, UsbHidClassBuilder},
+    device::keyboard::{BootKeyboard, BootKeyboardConfig},
+    device::DeviceClass,
+    prelude::*,
     UsbHidError,
 };
 #[cfg(feature = "cli")]
@@ -67,31 +66,7 @@ use keyberon::{
 };
 
 #[cfg(not(feature = "debug"))]
-mod defmt {
-    #[macro_export]
-    macro_rules! trace {
-        ($($_:tt)*) => {{}};
-    }
-    #[macro_export]
-    macro_rules! debug {
-        ($($_:tt)*) => {{}};
-    }
-    #[macro_export]
-    macro_rules! info {
-        ($($_:tt)*) => {{}};
-    }
-    #[macro_export]
-    macro_rules! error {
-        ($($_:tt)*) => {{}};
-    }
-    #[macro_export]
-    macro_rules! timestamp {
-        ($($_:tt)*) => {};
-    }
-
-    // macros are exported at the root of the crate so pull them back here
-    pub use super::{debug, error, info, timestamp, trace};
-}
+mod defmt;
 
 #[cfg(feature = "cli")]
 mod cli;
@@ -126,8 +101,8 @@ const TO_USB_STACK_SZ: usize = 32;
 type ScannedEventStack = ArrayDeque<Event, SCANNED_STACK_SZ, Saturating>;
 type ToUSBStack = ArrayDeque<(Source, Event), TO_USB_STACK_SZ, Saturating>;
 //type InterfaceList<'a> = HCons<NKROBootKeyboardInterface<'a, UsbBus>, HNil>;
-type InterfaceList<'a> = HCons<BootKeyboardInterface<'a, UsbBus>, HNil>;
-type MyUsbHidClass<'a> = UsbHidClass<UsbBus, InterfaceList<'a>>;
+type InterfaceList<'a> = HCons<BootKeyboard<'a, UsbBus>, HNil>;
+type MyUsbHidClass<'a> = UsbHidClass<'a, UsbBus, InterfaceList<'a>>;
 #[cfg(feature = "cli")]
 type UsbSerialCell<'a> =
     RefCell<SerialPort<'a, UsbBus, [u8; USB_SERIAL_RX_SZ], [u8; USB_SERIAL_TX_SZ]>>;
@@ -299,9 +274,9 @@ async fn usb_app<'a>(
         ..
     } = board;
     let builder = UsbDeviceBuilder::new(usb_bus, VID_PID)
-        .manufacturer("Ithinuel.me")
-        .product("WilsKeeb")
-        .serial_number("Dev Environment")
+        .manufacturer(&["Ithinuel.me"])
+        .product(&["WilsKeeb"])
+        .serial_number(&["Dev Environment"])
         .supports_remote_wakeup(true)
         .device_class(0)
         .device_sub_class(0)
@@ -343,7 +318,7 @@ async fn usb_app<'a>(
             });
         }
 
-        let _ = keyboard_hid.interface().read_report();
+        let _ = keyboard_hid.device().read_report();
 
         // if 1ms since last update
         let now = timer.get_counter_low();
@@ -367,11 +342,11 @@ async fn usb_app<'a>(
             let has_keycodes = !keycodes.is_empty();
 
             // Setup the report for the control channel
-            match keyboard_hid.interface().write_report(keycodes) {
+            match keyboard_hid.device().write_report(keycodes) {
                 Err(UsbHidError::WouldBlock) | Err(UsbHidError::Duplicate) | Ok(_) => {}
                 Err(e) => panic!("Failed to write keyboard report: {:?}", e),
             }
-            match keyboard_hid.interface().tick() {
+            match keyboard_hid.device().tick() {
                 Err(UsbHidError::WouldBlock) | Ok(_) => {}
                 Err(e) => panic!("Failed to process keyboard tick: {:?}", e),
             }
@@ -476,13 +451,12 @@ fn main() -> ! {
 
     use embedded_hal::digital::InputPin;
     let pin = pins.gpio29.into_pull_up_input(); // setup pull-up input
-    /// give a little bit of time for the pull-up to do its job.
+                                                // give a little bit of time for the pull-up to do its job.
     cortex_m::asm::delay(500);
     let is_right = pin.is_high().unwrap_or_else(|_| unreachable!()); // Cannot fail
     pin.into_pull_down_disabled(); // reset the pin to its default status.
     defmt::info!("I am the {} side", if is_right { "right" } else { "left" });
     IS_RIGHT.store(is_right, Ordering::Relaxed);
-
 
     let board = Default::default();
 
@@ -500,8 +474,8 @@ fn main() -> ! {
     ));
 
     let keyboard_hid = UsbHidClassBuilder::new()
-        //.add_interface(NKROBootKeyboardInterface::default_config())
-        .add_interface(BootKeyboardInterface::default_config())
+        //.add_device(NKROBootKeyboardConfig::default())
+        .add_device(BootKeyboardConfig::default())
         .build(&usb_bus);
 
     // This needs to be the last class to be defined.

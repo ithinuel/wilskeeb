@@ -31,3 +31,9 @@
 [submodule "usb-device"]
 	path = vendor/usb-device
 	url = git@github.com:rust-embedded-community/usb-device.git
+[submodule "usbd-human-interface-device"]
+	path = vendor/usbd-human-interface-device
+	url = git@github.com:dlkj/usbd-human-interface-device.git
+[submodule "usbd-serial"]
+	path = vendor/usbd-serial
+	url = git@github.com:rust-embedded-community/usbd-serial.git

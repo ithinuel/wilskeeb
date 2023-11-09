@@ -227,8 +227,8 @@ pub(crate) async fn ui_app(
                 display = d;
                 break;
             }
-            Err((oled, err)) => {
-                defmt::error!("Display startup failed with: {}", defmt::Debug2Format(&err));
+            Err((oled, _err)) => {
+                defmt::error!("Display startup failed with: {}", defmt::Debug2Format(&_err));
                 utils_async::wait_for(timer, 10.millis()).await;
                 oled_display = oled;
             }

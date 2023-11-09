@@ -15,21 +15,21 @@ keywords = ["keyboard", "rp2040", "keyberon"]
 [dependencies]
 cortex-m = { version = "0.7.7", features = ["inline-asm"] }
 cortex-m-rt = "0.7.3"
-critical-section = "1.1.1"
+critical-section = "1.1.2"
 
-panic-probe = { version = "0.3.0", features = ["print-defmt"], optional = true }
+panic-probe = { version = "0.3.1", features = ["print-defmt"], optional = true }
 panic-persist = { version = "0.3.0", optional = true }
 panic-reset = { version = "0.1.1", optional = true }
 
-embedded-hal = { version = "1.0.0-alpha.11" }
-embedded-hal-async = "0.2.0-alpha.2"
+embedded-hal = { version = "1.0.0-rc.1" }
+embedded-hal-async = "1.0.0-rc.1"
 embedded-time = "0.12.1"
-fugit = { version = "0.3.6", features = ["defmt"] }
+fugit = { version = "0.3.7" }
 
 # rp2040 hal & drivers
-sparkfun-pro-micro-rp2040 = "0.6.0"
+sparkfun-pro-micro-rp2040 = "0.7.0"
 rp2040-async-i2c = { version = "0.1.0", features = ["pio"] }
-rp2040-hal = { version = "0.9.0-alpha.1", features = [
+rp2040-hal = { version = "0.9.0", features = [
   "eh1_0_alpha",
   "rp2040-e5",
 ], default-features = false }
@@ -38,40 +38,41 @@ rp2040-hal = { version = "0.9.0-alpha.1", features = [
 adafruit-featherwing-oled128x64 = { version = "0.1.0", features = [
   "embedded-graphics",
 ] }
-embedded-graphics = "0.7.1"
-embedded-layout = "0.2.0"
+embedded-graphics = "0.8.1"
+embedded-layout = "0.4.1"
 sh1107 = "0.1.0"
 #smart-leds = {version =  "0.3.0", optional = true }
-ws2812-pio = {version= "0.6.0", optional = true }
+ws2812-pio = { version = "0.6.0", optional = true }
 
 # async ftw
-futures = { version = "0.3.26", default-features = false, features = [
+futures = { version = "0.3.29", default-features = false, features = [
   "async-await",
 ] }
 nostd_async = { version = "0.6.1", features = ["cortex_m", "wfe"] }
 
 # usb related deps
-frunk = { version = "0.4.1", default-features = false }
+frunk = { version = "0.4.2", default-features = false }
 keyberon = "0.2.0"
-num_enum = { version = "0.5.10", default-features = false }
-usb-device = { version = "0.2.9", features = ["defmt"] }
-usbd-human-interface-device = "0.3.1"
-usbd-serial = {version= "0.1.1" , optional = true}
+num_enum = { version = "0.5.11", default-features = false }
+usb-device = { version = "0.3" }
+usbd-human-interface-device = "0.4.3"
+usbd-serial = { version = "0.1.1", optional = true }
 
 # logging
-bbqueue = { version = "0.5.1", features = ["thumbv6"], optional = true }
-defmt = { version = "0.3.2", optional = true }
-defmt-bbq = { version = "0.1.0", optional = true }
+defmt = { version = "0.3.5", optional = true }
+defmt-serial = { version = "0.7.0", optional = true }
 defmt-rtt = { version = "0.4.0", optional = true }
+defmt-bbq = { version = "0.1.0", optional = true }
+bbqueue = { version = "0.5.1", features = ["thumbv6"], optional = true }
 
 # interkeyboard tools
 arraydeque = { version = "0.5", default-features = false }
-arrayvec = { version = "0.7.2", default-features = false }
-either = { version = "1.8.1", default-features = false }
+arrayvec = { version = "0.7.4", default-features = false }
+either = { version = "1.9.0", default-features = false }
 static_assertions = "1.1.0"
 
 [dev-dependencies]
-embedded-graphics-simulator = "0.4.0"
+embedded-graphics-simulator = "0.4.1"
 
 [profile.release]
 debug = 2         # skip line info for cleaner probe-run output
@@ -85,18 +86,26 @@ default = ["panic-reset"]
 cli = []
 
 debug-to-probe = ["defmt-rtt", "debug", "panic-probe"]
-debug-to-cli = ["cli", "defmt-bbq", "debug", "panic-persist"]
+debug-to-cli = [
+  "cli",
+  "defmt-bbq",
+  "debug",
+  "panic-persist",
+  "bbqueue",
+  "usbd-serial",
+]
 
-debug = ["defmt", "rp2040-hal/defmt"]
+debug = ["defmt", "rp2040-hal/defmt", "usb-device/defmt", "fugit/defmt"]
 
 [patch.crates-io]
 adafruit-featherwing-oled128x64 = { path = "../vendor/sh1107-rs/adafruit-featherwing-oled128x64" }
-bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "bump-to-cortex-m-0.7.0" }
+bbqueue = { git = "https://github.com/ithinuel/bbqueue.git", branch = "PR98" }
 keyberon = { path = "../vendor/keyberon" }
 rp2040-async-i2c = { path = "../vendor/rp2040-async-i2c" }
 rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
 sh1107 = { path = "../vendor/sh1107-rs/sh1107" }
 sparkfun-pro-micro-rp2040 = { path = "../vendor/boards/boards/sparkfun-pro-micro-rp2040" }
 ws2812-pio = { path = "../vendor/ws2812-pio-rs" }
-heapless = { git = "https://github.com/japaric/heapless" }
 usb-device = { path = "../vendor/usb-device" }
+usbd-human-interface-device = { path = "../vendor/usbd-human-interface-device" }
+usbd-serial = { path = "../vendor/usbd-serial" }
