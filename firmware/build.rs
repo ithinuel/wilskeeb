@@ -23,9 +23,7 @@ fn main() {
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
 
-    if cfg!(feature = "debug") {
         println!("cargo:rustc-link-arg=-Tdefmt.x");
-    }
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`

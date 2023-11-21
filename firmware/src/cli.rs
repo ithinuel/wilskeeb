@@ -4,9 +4,6 @@ use usb_device::UsbError;
 #[cfg(feature = "debug-to-cli")]
 use panic_persist::get_panic_message_bytes;
 
-#[cfg(not(feature = "debug"))]
-use crate::defmt;
-
 fn read_from_usb(usb_serial: &UsbSerialCell, buf: &mut [u8]) -> Result<usize, UsbError> {
     let serial = &mut *usb_serial.borrow_mut();
 

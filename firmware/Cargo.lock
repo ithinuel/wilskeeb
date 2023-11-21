@@ -1490,7 +1490,7 @@ dependencies = [
 
 [[package]]
 name = "rp2040-hal"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -1810,8 +1810,11 @@ checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
 [[package]]
 name = "usb-device"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c0cba6a27f55a1115ed4dd6bb9296f3ec759aa3dec87eb0034b4905878d1d7b"
 dependencies = [
  "defmt",
+ "heapless",
  "num_enum 0.6.1",
  "portable-atomic",
 ]
@@ -1891,6 +1894,7 @@ dependencies = [
  "arraydeque 0.5.1",
  "arrayvec",
  "bbqueue",
+ "cfg-if",
  "cortex-m",
  "cortex-m-rt",
  "critical-section",

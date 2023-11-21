@@ -30,8 +30,6 @@ use hal::{
     pac, pio, Timer,
 };
 
-#[cfg(not(feature = "debug"))]
-use crate::defmt;
 use crate::ABlackBoard;
 use crate::{utils_async, ABBInner};
 

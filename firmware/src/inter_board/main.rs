@@ -3,8 +3,6 @@ use fugit::ExtU32;
 use futures::FutureExt;
 use rp2040_hal::{pac, Clock};
 
-#[cfg(not(feature = "debug"))]
-use crate::defmt;
 use crate::{
     inter_board::{ADDRESS, COLUMN_COUNT},
     utils_async, Source,
@@ -12,7 +10,6 @@ use crate::{
 
 use super::{Error, Pins, INTER_BOARD_FREQ};
 
-#[cfg(feature = "debug")]
 use super::EventWrapper;
 
 struct Timeout;

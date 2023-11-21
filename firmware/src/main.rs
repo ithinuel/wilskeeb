@@ -3,19 +3,55 @@
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
 
-#[cfg(any(
-    all(feature = "debug-to-probe", feature = "debug-to-cli"),
-    all(
-        feature = "debug",
-        not(any(feature = "debug-to-probe", feature = "debug-to-cli"))
-    )
-))]
-compile_error!(
-    "Only one feature of \"debug-to-probe\" or \"debug-to-cli\" must be enabled for this create"
-);
+cfg_if::cfg_if! {
+    if #[cfg(all(feature = "default", feature = "debug"))] {
+            compile_error!("Default features must be disabled while building with debug support");
+    } else if #[cfg(feature = "default")] {
+        use panic_reset as _;
+    } else if #[cfg(not(feature = "debug"))] {
+        compile_error!("Either default or one of the debug features should be enabled.");
+    }
+}
 
-#[cfg(all(feature = "default", feature = "debug"))]
-compile_error!("Default features must be disabled while building with debug support");
+#[cfg(feature = "debug")]
+cfg_if::cfg_if! {
+    if #[cfg(any(
+            all(feature = "debug-to-probe", feature = "debug-to-cli"),
+            not(any(feature = "debug-to-probe", feature = "debug-to-cli"))
+    ))] {
+        compile_error!(
+            "Exacly only one feature of \"debug-to-probe\" or \"debug-to-cli\" must be enabled for this create when no-default-features is set"
+        );
+    } else if #[cfg(feature = "debug-to-probe")] {
+        use panic_probe as _;
+        use defmt_rtt as _;
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "nkro")] {
+        use usbd_human_interface_device::device::keyboard::{
+            NKROBootKeyboard as Keyboard, NKROBootKeyboardConfig as KeyboardConfig,
+        };
+    } else {
+        use usbd_human_interface_device::device::keyboard::{
+            BootKeyboard as Keyboard, BootKeyboardConfig as KeyboardConfig,
+        };
+    }
+}
+cfg_if::cfg_if! {
+    if #[cfg(feature = "cli")] {
+        use usbd_serial::SerialPort;
+        mod cli;
+        type UsbSerialCell<'a> =
+            RefCell<SerialPort<'a, UsbBus, [u8; USB_SERIAL_RX_SZ], [u8; USB_SERIAL_TX_SZ]>>;
+
+        /// USB Serial cli update frequency.
+        const CLI_FREQUENCY: HertzU32 = HertzU32::kHz(1);
+        const USB_SERIAL_RX_SZ: usize = 64;
+        const USB_SERIAL_TX_SZ: usize = 1024;
+    }
+}
 
 use core::{
     cell::RefCell,
@@ -23,14 +59,6 @@ use core::{
 };
 
 use critical_section::Mutex;
-#[cfg(feature = "debug-to-probe")]
-use panic_probe as _;
-#[cfg(not(any(feature = "debug-to-probe", feature = "debug-to-cli")))]
-use panic_reset as _;
-
-#[cfg(feature = "debug-to-probe")]
-use defmt_rtt as _;
-
 use fugit::{ExtU32, HertzU32, MicrosDurationU32, TimerInstantU64};
 
 use rp2040_hal::{
@@ -47,16 +75,9 @@ use frunk::hlist::{HCons, HNil};
 use usb_device::{
     bus::UsbBusAllocator,
     class::UsbClass as _,
-    device::{UsbDeviceBuilder, UsbDeviceState, UsbRev, UsbVidPid},
+    device::{StringDescriptors, UsbDeviceBuilder, UsbDeviceState, UsbRev, UsbVidPid},
 };
-use usbd_human_interface_device::{
-    device::keyboard::{BootKeyboard, BootKeyboardConfig},
-    device::DeviceClass,
-    prelude::*,
-    UsbHidError,
-};
-#[cfg(feature = "cli")]
-use usbd_serial::SerialPort;
+use usbd_human_interface_device::{device::DeviceClass, prelude::*, UsbHidError};
 
 use arraydeque::{behavior::Saturating, ArrayDeque};
 use arrayvec::ArrayVec;
@@ -65,11 +86,6 @@ use keyberon::{
     layout::{CustomEvent, Event, Layout},
 };
 
-#[cfg(not(feature = "debug"))]
-mod defmt;
-
-#[cfg(feature = "cli")]
-mod cli;
 mod inter_board;
 mod layout;
 mod matrix;
@@ -100,12 +116,8 @@ const TO_USB_STACK_SZ: usize = 32;
 
 type ScannedEventStack = ArrayDeque<Event, SCANNED_STACK_SZ, Saturating>;
 type ToUSBStack = ArrayDeque<(Source, Event), TO_USB_STACK_SZ, Saturating>;
-//type InterfaceList<'a> = HCons<NKROBootKeyboardInterface<'a, UsbBus>, HNil>;
-type InterfaceList<'a> = HCons<BootKeyboard<'a, UsbBus>, HNil>;
+type InterfaceList<'a> = HCons<Keyboard<'a, UsbBus>, HNil>;
 type MyUsbHidClass<'a> = UsbHidClass<'a, UsbBus, InterfaceList<'a>>;
-#[cfg(feature = "cli")]
-type UsbSerialCell<'a> =
-    RefCell<SerialPort<'a, UsbBus, [u8; USB_SERIAL_RX_SZ], [u8; USB_SERIAL_TX_SZ]>>;
 type TimerInstant = TimerInstantU64<1_000_000>;
 
 #[derive(Default)]
@@ -136,29 +148,19 @@ impl ABBInner {
 /// USB VID/PID for a generic keyboard from <https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt>
 const VID_PID: UsbVidPid = UsbVidPid(0x16c0, 0x27db);
 const DEVICE_RELEASE: u16 = 0x0100;
-/// USB Serial cli update frequency.
-#[cfg(feature = "cli")]
-const CLI_FREQUENCY: HertzU32 = HertzU32::kHz(1);
 /// Matrix scan frequency.
 const SCAN_FREQUENCY: HertzU32 = HertzU32::kHz(5);
 /// Time required for a key press to stop bouncing.
 const DEBOUNCE_PERIOD: MicrosDurationU32 = MicrosDurationU32::millis(5);
 /// Maximum async task count on the system
-#[cfg(feature = "cli")]
-const TASK_COUNT: usize = 5;
-#[cfg(not(feature = "cli"))]
-const TASK_COUNT: usize = 6;
+//const TASK_COUNT: usize = if cfg!(feature = "cli") { 6 } else { 5 };
+const TASK_COUNT: usize = 32;
 
 static_assertions::const_assert!(DEBOUNCE_PERIOD.ticks() <= (u16::max_value() as u32));
 static_assertions::const_assert!(matches!(
     DEBOUNCE_PERIOD.const_partial_cmp(SCAN_FREQUENCY.into_duration::<1, 1_000_000>()),
     Some(core::cmp::Ordering::Greater | core::cmp::Ordering::Equal)
 ));
-
-#[cfg(feature = "cli")]
-const USB_SERIAL_RX_SZ: usize = 64;
-#[cfg(feature = "cli")]
-const USB_SERIAL_TX_SZ: usize = 1024;
 
 static IS_RIGHT: AtomicBool = AtomicBool::new(false);
 
@@ -273,21 +275,27 @@ async fn usb_app<'a>(
         is_main_half,
         ..
     } = board;
-    let builder = UsbDeviceBuilder::new(usb_bus, VID_PID)
-        .manufacturer(&["Ithinuel.me"])
-        .product(&["WilsKeeb"])
-        .serial_number(&["Dev Environment"])
-        .supports_remote_wakeup(true)
-        .device_class(0)
-        .device_sub_class(0)
-        .device_protocol(0)
-        .max_packet_size_0(64)
-        .max_power(500)
-        .usb_rev(UsbRev::Usb200)
-        .device_release(DEVICE_RELEASE);
-    #[cfg(feature = "cli")]
-    let builder = builder.composite_with_iads();
-    let mut usb_dev = builder.build();
+    let builder = || {
+        let builder = UsbDeviceBuilder::new(usb_bus, VID_PID)
+            .supports_remote_wakeup(true)
+            .device_class(0)
+            .device_sub_class(0)
+            .device_protocol(0)
+            .usb_rev(UsbRev::Usb200)
+            .device_release(DEVICE_RELEASE)
+            .strings(&[StringDescriptors::default()
+                .manufacturer("Ithinuel.me")
+                .product("WilsKeeb")
+                .serial_number("Dev Environment")])
+            .and_then(|builder| builder.max_packet_size_0(64))
+            .and_then(|builder| builder.max_power(500));
+        #[cfg(feature = "cli")]
+        let builder = builder.map(|builder| builder.composite_with_iads());
+        builder
+    };
+    let mut usb_dev = builder()
+        .expect("Failed to configure UsbDeviceBuilder")
+        .build();
 
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
@@ -366,11 +374,11 @@ async fn usb_app<'a>(
 ///
 /// Handles simple request from the usb-serial interface to help manage and debug the firmware.
 /// see [`cli::update`] for a full description of the supported commands.
-#[cfg(feature = "debug-to-cli")]
+#[cfg(feature = "cli")]
 async fn cli_app<'a>(
     timer: &Timer,
     usb_serial: &UsbSerialCell<'a>,
-    mut consumer: defmt_bbq::DefmtConsumer,
+    #[cfg(feature = "debug-to-cli")] mut consumer: defmt_bbq::DefmtConsumer,
 ) {
     const CLI_PERIOD: MicrosDurationU32 = CLI_FREQUENCY.into_duration();
 
@@ -378,18 +386,11 @@ async fn cli_app<'a>(
     loop {
         next_scan_at = utils_async::wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
-        cli::update(usb_serial, &mut consumer);
-    }
-}
-#[cfg(all(feature = "cli", not(feature = "debug-to-cli")))]
-async fn cli_app<'a>(timer: &Timer, usb_serial: &UsbSerialCell<'a>) {
-    const CLI_PERIOD: MicrosDurationU32 = CLI_FREQUENCY.into_duration();
-
-    let mut next_scan_at = timer.get_counter() + CLI_PERIOD;
-    loop {
-        next_scan_at = utils_async::wait_until(timer, next_scan_at).await + CLI_PERIOD;
-
-        cli::update(usb_serial);
+        cli::update(
+            usb_serial,
+            #[cfg(feature = "debug-to-cli")]
+            &mut consumer,
+        );
     }
 }
 
@@ -474,8 +475,7 @@ fn main() -> ! {
     ));
 
     let keyboard_hid = UsbHidClassBuilder::new()
-        //.add_device(NKROBootKeyboardConfig::default())
-        .add_device(BootKeyboardConfig::default())
+        .add_device(KeyboardConfig::default())
         .build(&usb_bus);
 
     // This needs to be the last class to be defined.
@@ -490,7 +490,7 @@ fn main() -> ! {
     let (pio0, pio0sm0, pio0sm1, ..) = pac.PIO0.split(&mut pac.RESETS);
     let (pio1, pio1sm0, ..) = pac.PIO1.split(&mut pac.RESETS);
 
-    let matrix = matrix::Matrix::new(
+    let mut matrix = matrix::Matrix::new(
         (
             pins.gpio2.into_pull_up_input(),
             pins.gpio4.into_pull_up_input(),
@@ -508,6 +508,11 @@ fn main() -> ! {
             pins.gpio22.reconfigure(),
         ),
     );
+
+    if matrix.is_boot_loader_key_pressed() {
+        rp2040_hal::rom_data::reset_to_usb_boot(0, 0);
+        unreachable!()
+    }
 
     let neopixel = pins.gpio25;
     let led_strip = pins.gpio3;

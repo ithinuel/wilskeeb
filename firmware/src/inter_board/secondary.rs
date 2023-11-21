@@ -1,8 +1,6 @@
 use fugit::ExtU32;
 use rp2040_hal::{i2c::peripheral::I2CEvent, pac};
 
-#[cfg(not(feature = "debug"))]
-use crate::defmt;
 use crate::TimerInstant;
 
 use super::Error;

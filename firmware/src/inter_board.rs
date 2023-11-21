@@ -16,7 +16,6 @@
 use core::cell::RefCell;
 
 use fugit::{ExtU32, HertzU32, MicrosDurationU32};
-#[cfg(feature = "debug")]
 use keyberon::layout::Event;
 use rp2040_hal::{
     clocks::SystemClock,
@@ -26,8 +25,6 @@ use rp2040_hal::{
 };
 use usb_device::device::UsbDeviceState;
 
-#[cfg(not(feature = "debug"))]
-use crate::defmt;
 use crate::{read_side, utils_async, ScannedEventStack, Source, TimerInstant, ToUSBStack};
 
 use self::{main::Main, secondary::Secondary};
@@ -46,9 +43,7 @@ const TRANSACTION_TIMEOUT: MicrosDurationU32 = MicrosDurationU32::millis(10);
 const COMM_TIMEOUT: MicrosDurationU32 = MicrosDurationU32::millis(50);
 const COLUMN_COUNT: u8 = 14;
 
-#[cfg(feature = "debug")]
 pub struct EventWrapper(pub Event);
-#[cfg(feature = "debug")]
 impl defmt::Format for EventWrapper {
     fn format(&self, fmt: defmt::Formatter) {
         let (op, r, c) = match self.0 {
@@ -65,6 +60,7 @@ pub enum Error {
     BusError(rp2040_hal::i2c::Error),
     QueueFull,
 }
+
 #[cfg(feature = "debug")]
 impl defmt::Format for Error {
     fn format(&self, fmt: defmt::Formatter) {
@@ -81,6 +77,12 @@ impl defmt::Format for Error {
                 err => defmt::write!(fmt, "BusError({})", err),
             },
         }
+    }
+}
+#[cfg(not(feature = "debug"))]
+impl defmt::Format for Error {
+    fn format(&self, _fmt: defmt::Formatter) {
+        unimplemented!()
     }
 }
 impl From<rp2040_hal::i2c::Error> for Error {

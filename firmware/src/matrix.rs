@@ -1,5 +1,5 @@
 use embedded_hal::digital::{OutputPin, PinState};
-use rp2040_hal::gpio::{bank0, FunctionSioOutput, Pin, FunctionSioInput, PullUp, PullNone};
+use rp2040_hal::gpio::{bank0, FunctionSioInput, FunctionSioOutput, Pin, PullNone, PullUp};
 
 const ROW_MASK: u32 = 0b11_1111_0100;
 #[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
@@ -70,6 +70,18 @@ impl Matrix {
             _ => unreachable!(),
         };
     }
+    fn get_row(&mut self, idx: usize) -> u32 {
+        self.set(idx, PinState::Low);
+
+        // experimentally measured to generate a ~1200ns delay between 2 iterations.
+        cortex_m::asm::delay(40);
+
+        let column = rp2040_hal::sio::Sio::read_bank0() & ROW_MASK;
+
+        self.set(idx, PinState::High);
+
+        column
+    }
     pub fn clear(&mut self) {
         for idx in 0..5 {
             self.set(idx, PinState::High);
@@ -80,15 +92,13 @@ impl Matrix {
 
         // SAFETY: We're only doing atomic read and only interested in the pins we own
         for (idx, key) in keys.0.iter_mut().enumerate() {
-            self.set(idx, PinState::Low);
-
-            // experimentally measured to generate a ~1200ns delay between 2 iterations.
-            cortex_m::asm::delay(40);
-
-            key.0 = rp2040_hal::sio::Sio::read_bank0() & ROW_MASK;
-
-            self.set(idx, PinState::High);
+            key.0 = self.get_row(idx);
         }
         keys
+    }
+    pub fn is_boot_loader_key_pressed(&mut self) -> bool {
+        // matrix: 0, 0 => gpio2
+        const MASK: u32 = 1 << 2;
+        (self.get_row(0) & MASK) != MASK
     }
 }
