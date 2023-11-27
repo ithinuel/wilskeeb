@@ -1912,6 +1912,7 @@ dependencies = [
  "frunk",
  "fugit",
  "futures",
+ "itertools 0.10.5",
  "keyberon",
  "nostd_async",
  "num_enum 0.5.11",

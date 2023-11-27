@@ -91,6 +91,7 @@ mod layout;
 mod matrix;
 mod ui;
 mod utils_async;
+mod utils_time;
 
 use layout::CustomAction;
 
@@ -194,7 +195,7 @@ async fn scan_app(board: &BlackBoard, timer: &Timer, mut matrix: matrix::Matrix)
 
     let mut now = timer.get_counter();
     loop {
-        now = utils_async::wait_until(timer, now + SCAN_PERIOD).await;
+        now = utils_time::wait_until(timer, now + SCAN_PERIOD).await;
         let mut scanned = scanned.borrow_mut();
         for event in debouncer.events(matrix.get()) {
             // TODO: if for some reason the queue isn't processed.
@@ -301,7 +302,7 @@ async fn usb_app<'a>(
     let mut timestamp = timer.get_counter_low();
     let mut previous_state = usb_dev.state();
     loop {
-        utils_async::wait_for(timer, 10.micros()).await;
+        utils_time::wait_for(timer, 10.micros()).await;
 
         #[cfg(feature = "cli")]
         if let Ok(mut usb_serial) = usb_serial.try_borrow_mut() {
@@ -384,7 +385,7 @@ async fn cli_app<'a>(
 
     let mut next_scan_at = timer.get_counter() + CLI_PERIOD;
     loop {
-        next_scan_at = utils_async::wait_until(timer, next_scan_at).await + CLI_PERIOD;
+        next_scan_at = utils_time::wait_until(timer, next_scan_at).await + CLI_PERIOD;
 
         cli::update(
             usb_serial,
@@ -397,7 +398,6 @@ async fn cli_app<'a>(
 #[sparkfun_pro_micro_rp2040::entry]
 fn main() -> ! {
     static mut CORE1_STACK: Stack<40960> = Stack::new();
-    static mut TIMER: Option<Timer> = None;
     static ASBB: ABlackBoard = Mutex::new(RefCell::new(ABBInner::new()));
     let aboard = &ASBB;
 
@@ -463,8 +463,6 @@ fn main() -> ! {
 
     let mut timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
     let alarm0 = timer.alarm_0().unwrap_or_else(|| unreachable!());
-    *TIMER = Some(timer);
-    let timer = TIMER.as_ref().unwrap();
 
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
         pac.USBCTRL_REGS,
@@ -520,7 +518,7 @@ fn main() -> ! {
     let (resets, i2c, sda, scl) = (pac.RESETS, pac.I2C0, pins.gpio0, pins.gpio1);
 
     use nostd_async::Task;
-    utils_async::init(alarm0);
+    utils_time::init(alarm0, timer);
 
     let mut inter_board_task = Task::new(inter_board_app(
         &board,
@@ -529,13 +527,13 @@ fn main() -> ! {
         sda,
         scl,
         resets,
-        timer,
+        &timer,
     ));
-    let mut scan_task = Task::new(scan_app(&board, timer, matrix));
+    let mut scan_task = Task::new(scan_app(&board, &timer, matrix));
     let mut usb_task = Task::new(usb_app(
         &board,
         &aboard,
-        timer,
+        &timer,
         &usb_bus,
         keyboard_hid,
         #[cfg(feature = "cli")]
@@ -560,7 +558,7 @@ fn main() -> ! {
             let mut runtime = nostd_async::Runtime::new();
             let mut ui_task = Task::new(ui::ui_app(
                 aboard,
-                timer,
+                &timer,
                 (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
                 (pio1, pio1sm0, oled_sda, oled_scl),
                 system_clock_freq,

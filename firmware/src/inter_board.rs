@@ -25,7 +25,7 @@ use rp2040_hal::{
 };
 use usb_device::device::UsbDeviceState;
 
-use crate::{read_side, utils_async, ScannedEventStack, Source, TimerInstant, ToUSBStack};
+use crate::{read_side, utils_time, ScannedEventStack, Source, TimerInstant, ToUSBStack};
 
 use self::{main::Main, secondary::Secondary};
 mod main;
@@ -173,7 +173,7 @@ impl<'clk> InterBoard<'clk> {
                         }
                     }
 
-                    utils_async::wait_for(timer, delay).await;
+                    utils_time::wait_for(timer, delay).await;
                     state
                 }
             }
@@ -189,12 +189,12 @@ impl<'clk> InterBoard<'clk> {
                     // transaction) then reset the bus to clear any unexpected clock stretching.
                     Err(Error::BusIdle) | Err(Error::Timeout) => {
                         let (i2c_block, pins) = secondary.release(&mut resets);
-                        utils_async::wait_for(timer, 1_000.micros()).await;
+                        utils_time::wait_for(timer, 1_000.micros()).await;
                         Secondary::new(i2c_block, pins, &mut resets, timer.get_counter()).into()
                     }
                     _ => {
                         // lets be nice
-                        utils_async::wait_for(timer, 10.micros()).await;
+                        utils_time::wait_for(timer, 10.micros()).await;
                         secondary.into()
                     }
                 }

@@ -14,6 +14,7 @@ keywords = ["keyboard", "rp2040", "keyberon"]
 
 [dependencies]
 cfg-if = "1.0.0"
+itertools = { version = "0.10.5", default-features = false }
 
 cortex-m = { version = "0.7.7", features = ["inline-asm"] }
 cortex-m-rt = "0.7.3"
@@ -26,7 +27,7 @@ panic-reset = { version = "0.1.1", optional = true }
 embedded-hal = { version = "1.0.0-rc.1" }
 embedded-hal-async = "1.0.0-rc.1"
 embedded-time = "0.12.1"
-fugit = { version = "0.3.7" }
+fugit = { version = "0.3.7", features = ["defmt"] }
 
 # rp2040 hal & drivers
 sparkfun-pro-micro-rp2040 = "0.7.0"
@@ -34,6 +35,7 @@ rp2040-async-i2c = { version = "0.1.0", features = ["pio"] }
 rp2040-hal = { version = "0.9.0", features = [
   "eh1_0_alpha",
   "rp2040-e5",
+  "defmt"
 ], default-features = false }
 
 # UI deps
@@ -56,7 +58,7 @@ nostd_async = { version = "0.6.1", features = ["cortex_m", "wfe"] }
 frunk = { version = "0.4.2", default-features = false }
 keyberon = "0.2.0"
 num_enum = { version = "0.5.11", default-features = false }
-usb-device = { version = "0.3" }
+usb-device = { version = "0.3", features = ["defmt"] }
 usbd-human-interface-device = "0.4.3"
 usbd-serial = { version = "0.1.1", optional = true }
 
@@ -96,7 +98,7 @@ debug-to-cli = [
   "bbqueue",
 ]
 
-debug = ["rp2040-hal/defmt", "usb-device/defmt", "fugit/defmt"]
+debug = []
 
 nkro = []
 
@@ -109,6 +111,5 @@ rp2040-hal = { path = "../vendor/rp-hal/rp2040-hal" }
 sh1107 = { path = "../vendor/sh1107-rs/sh1107" }
 sparkfun-pro-micro-rp2040 = { path = "../vendor/boards/boards/sparkfun-pro-micro-rp2040" }
 ws2812-pio = { path = "../vendor/ws2812-pio-rs" }
-#usb-device = { path = "../vendor/usb-device" }
 usbd-human-interface-device = { path = "../vendor/usbd-human-interface-device" }
 usbd-serial = { path = "../vendor/usbd-serial" }

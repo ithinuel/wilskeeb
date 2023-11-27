@@ -74,8 +74,6 @@ impl Secondary {
             None => {
                 if let Some(ts) = self.start_ts {
                     if timestamp >= (ts + super::TRANSACTION_TIMEOUT) {
-                        defmt::info!("Inter: {}: transaction timeout", timestamp);
-
                         self.start_ts = None;
                         self.transaction_start = false;
                         self.configured = false;

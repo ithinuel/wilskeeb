@@ -5,7 +5,7 @@ use rp2040_hal::{pac, Clock};
 
 use crate::{
     inter_board::{ADDRESS, COLUMN_COUNT},
-    utils_async, Source,
+    utils_time, Source,
 };
 
 use super::{Error, Pins, INTER_BOARD_FREQ};
@@ -39,7 +39,7 @@ impl Main {
             resets,
             system_clock.freq(),
         );
-        i2c.set_waker_setter(utils_async::i2c0_waker_setter);
+        i2c.set_waker_setter(crate::utils_async::i2c0_waker_setter);
         unsafe {
             rp2040_hal::pac::NVIC::unpend(rp2040_hal::pac::Interrupt::I2C0_IRQ);
             rp2040_hal::pac::NVIC::unmask(rp2040_hal::pac::Interrupt::I2C0_IRQ);
@@ -62,7 +62,7 @@ impl Main {
                 defmt::info!("new main: attempt {}", count);
                 let res = futures::select_biased! {
                     res = self.i2c.write(ADDRESS, &[0x80, 0x01]).fuse() => Ok(res),
-                    _ = utils_async::wait_for(timer, 1_000.micros()).fuse() => Err(Timeout)
+                    _ = utils_time::wait_for(timer, 1_000.micros()).fuse() => Err(Timeout)
                 };
                 // try to configure secondary
                 break match res {
@@ -78,7 +78,7 @@ impl Main {
                         } else {
                             5_000.micros()
                         };
-                        super::utils_async::wait_for(timer, delay).await;
+                        super::utils_time::wait_for(timer, delay).await;
                         continue;
                     }
                     Ok(_) | Err(Timeout) => Err(Error::Timeout),
@@ -92,7 +92,7 @@ impl Main {
             loop {
                 match futures::select_biased! {
                     res = self.i2c.write_read(ADDRESS, &[0x00], &mut keypresses).fuse() => Ok(res),
-                    _ = utils_async::wait_for(timer, 5_000.micros()).fuse() => Err(Timeout)
+                    _ = utils_time::wait_for(timer, 5_000.micros()).fuse() => Err(Timeout)
                 } {
                     Ok(res) => break res?,
                     Err(Timeout) if health > 0 => health -= 1,
@@ -146,7 +146,7 @@ impl Main {
             loop {
                 match futures::select_biased! {
                     res = self.i2c.write(ADDRESS, &frame).fuse() => Ok(res),
-                    _ = utils_async::wait_for(timer, 7_000.micros()).fuse() => Err(Timeout)
+                    _ = utils_time::wait_for(timer, 7_000.micros()).fuse() => Err(Timeout)
                 } {
                     Ok(res) => break res?,
                     Err(Timeout) if health > 0 => health -= 1,

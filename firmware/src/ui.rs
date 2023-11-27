@@ -31,7 +31,7 @@ use hal::{
 };
 
 use crate::ABlackBoard;
-use crate::{utils_async, ABBInner};
+use crate::{utils_time, ABBInner};
 
 mod sh1107_wrapper;
 mod widget;
@@ -89,7 +89,7 @@ impl UIStateMachine {
         let _ = text.draw(display);
 
         let _ = display.flush().await;
-        utils_async::wait_for(timer, 2000.millis()).await;
+        utils_time::wait_for(timer, 2000.millis()).await;
         text.character_style.text_color = Some(BinaryColor::Off);
         let _ = text.draw(display);
 
@@ -123,7 +123,7 @@ impl UIStateMachine {
 
         let _ = display.flush().await;
         let _ = display.set_state(DisplayState::On).await;
-        utils_async::wait_for(timer, 1000.millis()).await;
+        utils_time::wait_for(timer, 1000.millis()).await;
         let _ = display.set_state(DisplayState::Off).await;
 
         text.character_style.text_color = Some(BinaryColor::Off);
@@ -145,7 +145,7 @@ impl UIStateMachine {
 
         let _ = display.flush().await;
         let _ = display.set_state(DisplayState::On).await;
-        utils_async::wait_for(timer, 2000.millis()).await;
+        utils_time::wait_for(timer, 2000.millis()).await;
         let _ = display.set_state(DisplayState::Off).await;
 
         text.character_style.text_color = Some(BinaryColor::Off);
@@ -209,7 +209,7 @@ pub(crate) async fn ui_app(
         400_000.Hz(),
         system_clock_freq,
     ));
-    oled_display.set_waker_setter(utils_async::pio1_waker_setter);
+    oled_display.set_waker_setter(crate::utils_async::pio1_waker_setter);
 
     critical_section::with(move |_| unsafe {
         pac::NVIC::unpend(pac::Interrupt::PIO1_IRQ_0);
@@ -218,7 +218,7 @@ pub(crate) async fn ui_app(
 
     let mut display: BufferedDisplay<_, { ADDRESS }>;
 
-    utils_async::wait_for(timer, 500.millis()).await;
+    utils_time::wait_for(timer, 500.millis()).await;
     loop {
         match BufferedDisplay::new(oled_display).await {
             Ok(d) => {
@@ -227,7 +227,7 @@ pub(crate) async fn ui_app(
             }
             Err((oled, _err)) => {
                 defmt::error!("Display startup failed with: {}", defmt::Debug2Format(&_err));
-                utils_async::wait_for(timer, 10.millis()).await;
+                utils_time::wait_for(timer, 10.millis()).await;
                 oled_display = oled;
             }
         }
@@ -266,7 +266,7 @@ pub(crate) async fn ui_app(
     //);
     //let mut timestamp = timer.get_counter();
     //for wheel_pos in (0..=255).cycle() {
-    //    timestamp = utils_async::wait_until(timer, timestamp + 40_000.micros()).await;
+    //    timestamp = utils_time::wait_until(timer, timestamp + 40_000.micros()).await;
     //    neopixel
     //        .write(brightness(once(wheel(wheel_pos)), 25))
     //        .expect("Failed to set neopixel's color");
@@ -275,6 +275,6 @@ pub(crate) async fn ui_app(
     loop {
         let aboard = critical_section::with(|cs| aboard.borrow_ref(cs).clone());
         state.update(timer, &mut display, &aboard).await;
-        timestamp = utils_async::wait_until(timer, timestamp + 40.millis()).await;
+        timestamp = utils_time::wait_until(timer, timestamp + 40.millis()).await;
     }
 }
