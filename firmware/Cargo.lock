@@ -140,6 +140,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46afbd2983a5d5a7bd740ccb198caf5b82f45c40c09c0eed36052d91cb92e719"
 
 [[package]]
+name = "bitfield"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d7e60934ceec538daadb9d8432424ed043a904d8e0243f3c6446bce549a46ac"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -204,7 +210,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ec610d8f49840a5b376c69663b6369e71f4b34484b9b2eb29fb918d92516cb9"
 dependencies = [
  "bare-metal",
- "bitfield",
+ "bitfield 0.13.2",
  "embedded-hal 0.2.7",
  "volatile-register",
 ]
@@ -776,6 +782,16 @@ name = "hermit-abi"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d77f7ec81a6d05a3abb01ab6eb7590f6083d08449fe5a1c8b1e620283546ccb7"
+
+[[package]]
+name = "i2c-write-iter"
+version = "1.0.0-rc.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab53b9c1d2437b1bee03faabec9554ac3800d5e004e85255decc3eac78a0e3b1"
+dependencies = [
+ "embedded-hal 1.0.0-rc.1",
+ "embedded-hal-async",
+]
 
 [[package]]
 name = "image"
@@ -1474,6 +1490,7 @@ dependencies = [
  "embedded-hal 1.0.0-rc.1",
  "embedded-hal-async",
  "fugit",
+ "i2c-write-iter",
  "pio",
  "pio-proc",
  "rp2040-hal",
@@ -1492,6 +1509,7 @@ dependencies = [
 name = "rp2040-hal"
 version = "0.9.1"
 dependencies = [
+ "bitfield 0.14.0",
  "cortex-m",
  "critical-section",
  "defmt",
@@ -1633,6 +1651,7 @@ version = "0.1.0"
 dependencies = [
  "either",
  "embedded-hal-async",
+ "i2c-write-iter",
  "itertools 0.11.0",
 ]
 

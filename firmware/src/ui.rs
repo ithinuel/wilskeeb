@@ -6,7 +6,8 @@
 //!   - not configured
 //! - current layer ()
 
-use adafruit_featherwing_oled128x64::{BufferedDisplay, DisplayState, ValidBus};
+use adafruit_featherwing_oled128x64::{BufferedDisplay, DisplayState};
+use embedded_hal::i2c::SevenBitAddress;
 use fugit::{ExtU32, HertzU32, RateExtU32};
 use sparkfun_pro_micro_rp2040::hal;
 use usb_device::device::UsbDeviceState;
@@ -33,10 +34,12 @@ use hal::{
 use crate::ABlackBoard;
 use crate::{utils_time, ABBInner};
 
-mod sh1107_wrapper;
 mod widget;
 
 pub const ADDRESS: embedded_hal::i2c::SevenBitAddress = 0x3C;
+
+trait ValidBus: sh1107::WriteIter<SevenBitAddress> {}
+impl<T: sh1107::WriteIter<SevenBitAddress>> ValidBus for T {}
 
 type Display<T> = BufferedDisplay<T, { ADDRESS }>;
 enum UIStateMachine {
@@ -201,14 +204,14 @@ pub(crate) async fn ui_app(
     system_clock_freq: HertzU32,
 ) {
     let (mut pio1, pio1sm0, sda, scl) = oled;
-    let mut oled_display = sh1107_wrapper::I2CPeriph(rp2040_async_i2c::pio::I2C::new(
+    let mut oled_display = rp2040_async_i2c::pio::I2C::new(
         &mut pio1,
         sda,
         scl,
         pio1sm0,
         400_000.Hz(),
         system_clock_freq,
-    ));
+        );
     oled_display.set_waker_setter(crate::utils_async::pio1_waker_setter);
 
     critical_section::with(move |_| unsafe {
