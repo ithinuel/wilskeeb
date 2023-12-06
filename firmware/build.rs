@@ -22,7 +22,10 @@ fn main() {
         .write_all(include_bytes!("memory.x"))
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
-    println!("cargo:rustc-link-arg=-Tdefmt.x");
+
+    if std::env::var("CARGO_FEATURE_DEBUG").is_ok() {
+        println!("cargo:rustc-link-arg=-Tdefmt.x");
+    }
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`

@@ -541,7 +541,7 @@ fn main() -> ! {
     ));
     #[cfg(feature = "cli")]
     let mut cli_task = Task::new(cli_app(
-        timer,
+        &timer,
         &usb_serial,
         #[cfg(feature = "debug-to-cli")]
         consumer,
