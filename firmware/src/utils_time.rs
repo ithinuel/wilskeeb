@@ -13,10 +13,10 @@ use rp2040_hal::{
     timer::{Alarm, Alarm0, Timer},
 };
 
-use crate::TimerInstant;
+use crate::Instant;
 use crate::TASK_COUNT;
 
-type WakerVec = ArrayDeque<(TimerInstant, Waker, CoreId), { TASK_COUNT }>;
+type WakerVec = ArrayDeque<(Instant, Waker, CoreId), { TASK_COUNT }>;
 
 /// any us duration lower than that will be "async busy looped";
 const CUTOFF_DELAY: MicrosDurationU32 = MicrosDurationU32::micros(500);
@@ -28,16 +28,20 @@ pub fn init(alarm: Alarm0, timer: Timer) {
         *TIMER_WAKER.borrow_ref_mut(cs) = Some((alarm, ArrayDeque::new()));
         *TIMER.borrow_ref_mut(cs) = Some(timer);
     });
+    unsafe {
+        rp2040_hal::pac::NVIC::unpend(rp2040_hal::pac::Interrupt::TIMER_IRQ_0);
+        rp2040_hal::pac::NVIC::unmask(rp2040_hal::pac::Interrupt::TIMER_IRQ_0);
+    }
 }
 
-fn setup_alarm(alarm: &mut Alarm0, timestamp: TimerInstant) {
+fn setup_alarm(alarm: &mut Alarm0, timestamp: Instant) {
     alarm.clear_interrupt();
     alarm.enable_interrupt();
     if let Err(_) = alarm.schedule_at(timestamp) {
         panic!("Failed to schedule next alarm");
     }
 }
-fn enqueue_waker(cx: &Context, timestamp: TimerInstant) {
+fn enqueue_waker(cx: &Context, timestamp: Instant) {
     let core = rp2040_hal::sio::Sio::core();
 
     critical_section::with(|cs| {
@@ -64,7 +68,7 @@ fn enqueue_waker(cx: &Context, timestamp: TimerInstant) {
         }
     });
 }
-async fn shcedule_for(timestamp: TimerInstant) {
+async fn shcedule_for(timestamp: Instant) {
     let mut queued = false;
 
     futures::future::poll_fn(move |cx| {
@@ -80,7 +84,7 @@ async fn shcedule_for(timestamp: TimerInstant) {
     })
     .await
 }
-async fn poll_fn_until(timer: &Timer, timestamp: TimerInstant) {
+async fn poll_fn_until(timer: &Timer, timestamp: Instant) {
     futures::future::poll_fn(|cx| {
         cx.waker().wake_by_ref();
         if timer.get_counter() < timestamp {
@@ -97,7 +101,7 @@ pub async fn wait_for(timer: &Timer, delay: MicrosDurationU32) {
     wait_until(timer, timestamp).await;
 }
 
-pub async fn wait_until(timer: &Timer, timestamp: TimerInstant) -> TimerInstant {
+pub async fn wait_until(timer: &Timer, timestamp: Instant) -> Instant {
     let now = timer.get_counter();
     if timestamp >= (now + CUTOFF_DELAY) {
         shcedule_for(timestamp).await;

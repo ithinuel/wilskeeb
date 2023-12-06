@@ -31,13 +31,11 @@ use hal::{
     pac, pio, Timer,
 };
 
-use crate::ABlackBoard;
-use crate::{utils_time, ABBInner};
+use crate::utils_time;
 
 mod widget;
 
-pub const ADDRESS: embedded_hal::i2c::SevenBitAddress = 0x3C;
-
+pub const ADDRESS: SevenBitAddress = 0x3C;
 trait ValidBus: sh1107::WriteIter<SevenBitAddress> {}
 impl<T: sh1107::WriteIter<SevenBitAddress>> ValidBus for T {}
 
@@ -83,7 +81,7 @@ impl UIStateMachine {
     async fn startup<T: ValidBus>(
         timer: &Timer,
         display: &mut BufferedDisplay<T, { ADDRESS }>,
-        aboard: &ABBInner,
+        usb_dev_state: UsbDeviceState,
     ) -> Self {
         Self::draw_rounded_frame(display);
 
@@ -97,11 +95,15 @@ impl UIStateMachine {
         let _ = text.draw(display);
 
         let mut state = UIStateMachine::Idle;
-        state.to_home(display, aboard).await;
+        state.to_home(display, usb_dev_state).await;
         state
     }
 
-    async fn to_home<T: ValidBus>(&mut self, _display: &mut Display<T>, _aboard: &ABBInner) {
+    async fn to_home<T: ValidBus>(
+        &mut self,
+        _display: &mut Display<T>,
+        _usb_dev_state: UsbDeviceState,
+    ) {
         // TODO: Draw home
 
         // display:
@@ -138,7 +140,7 @@ impl UIStateMachine {
         &mut self,
         display: &mut Display<T>,
         timer: &Timer,
-        aboard: &ABBInner,
+        usb_dev_state: UsbDeviceState,
     ) {
         Self::draw_rounded_frame(display);
 
@@ -154,22 +156,22 @@ impl UIStateMachine {
         text.character_style.text_color = Some(BinaryColor::Off);
         let _ = text.draw(display);
 
-        self.to_home(display, aboard).await
+        self.to_home(display, usb_dev_state).await
     }
 
     async fn update<T: ValidBus>(
         &mut self,
         timer: &Timer,
         display: &mut Display<T>,
-        aboard: &ABBInner,
+        usb_dev_state: UsbDeviceState,
     ) {
         match self {
             UIStateMachine::Home => self.to_idle(display).await,
-            UIStateMachine::Idle if aboard.usb_state == UsbDeviceState::Suspend => {
+            UIStateMachine::Idle if usb_dev_state == UsbDeviceState::Suspend => {
                 self.to_suspend(display, timer).await
             }
-            UIStateMachine::Suspended if aboard.usb_state != UsbDeviceState::Suspend => {
-                self.wakeup(display, timer, aboard).await
+            UIStateMachine::Suspended if usb_dev_state != UsbDeviceState::Suspend => {
+                self.wakeup(display, timer, usb_dev_state).await
             }
             _ => {}
         }
@@ -186,7 +188,7 @@ impl UIStateMachine {
 /// Reads status from the black board & updates the UI accordingly.
 #[allow(clippy::type_complexity)]
 pub(crate) async fn ui_app(
-    aboard: &ABlackBoard,
+    atomic_usb_dev_state: &crate::usb::AtomicUsbDeviceState,
     timer: &Timer,
     _leds: (
         pio::PIO<pac::PIO0>,
@@ -211,7 +213,7 @@ pub(crate) async fn ui_app(
         pio1sm0,
         400_000.Hz(),
         system_clock_freq,
-        );
+    );
     oled_display.set_waker_setter(crate::utils_async::pio1_waker_setter);
 
     critical_section::with(move |_| unsafe {
@@ -229,7 +231,7 @@ pub(crate) async fn ui_app(
                 break;
             }
             Err((oled, _err)) => {
-                defmt::error!("Display startup failed with: {}", defmt::Debug2Format(&_err));
+                defmt::error!("Display startup failed with: {}", _err);
                 utils_time::wait_for(timer, 10.millis()).await;
                 oled_display = oled;
             }
@@ -242,12 +244,7 @@ pub(crate) async fn ui_app(
     let _ = display.set_state(DisplayState::On).await;
     defmt::info!("Display On!");
 
-    let mut state = UIStateMachine::startup(
-        timer,
-        &mut display,
-        &critical_section::with(|cs| aboard.borrow_ref(cs).clone()),
-    )
-    .await;
+    let mut state = UIStateMachine::startup(timer, &mut display, atomic_usb_dev_state.load()).await;
 
     //let carousel =
     //    embedded_graphics_widgets::carousel::Carousel::new(CarouselElements { slider: Slider });
@@ -276,8 +273,9 @@ pub(crate) async fn ui_app(
     //}
     let mut timestamp = timer.get_counter();
     loop {
-        let aboard = critical_section::with(|cs| aboard.borrow_ref(cs).clone());
-        state.update(timer, &mut display, &aboard).await;
+        state
+            .update(timer, &mut display, atomic_usb_dev_state.load())
+            .await;
         timestamp = utils_time::wait_until(timer, timestamp + 40.millis()).await;
     }
 }

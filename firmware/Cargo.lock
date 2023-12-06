@@ -494,6 +494,9 @@ name = "embedded-hal"
 version = "1.0.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2894bc2f0457b8ca3d6b8ab8aad64d9337583672494013457f86c5a9146c0e22"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "embedded-hal-async"

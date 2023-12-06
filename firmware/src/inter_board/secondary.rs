@@ -1,7 +1,7 @@
 use fugit::ExtU32;
 use rp2040_hal::{i2c::peripheral::I2CEvent, pac};
 
-use crate::TimerInstant;
+use crate::Instant;
 
 use super::Error;
 
@@ -11,9 +11,9 @@ pub struct Secondary {
     i2c: I2CPeriph,
     transaction_start: bool,
     ptr: u8,
-    start_ts: Option<TimerInstant>,
+    start_ts: Option<Instant>,
     configured: bool,
-    timestamp: TimerInstant,
+    timestamp: Instant,
 }
 #[cfg(feature = "debug")]
 impl defmt::Format for Secondary {
@@ -34,7 +34,7 @@ impl Secondary {
         i2c_block: pac::I2C0,
         (sda, scl): super::Pins,
         resets: &mut pac::RESETS,
-        timestamp: TimerInstant,
+        timestamp: Instant,
     ) -> Self {
         let i2c = rp2040_hal::i2c::I2C::new_peripheral_event_iterator(
             i2c_block,
@@ -56,7 +56,7 @@ impl Secondary {
     pub fn serve(
         &mut self,
         scanned: &core::cell::RefCell<crate::ScannedEventStack>,
-        timestamp: TimerInstant,
+        timestamp: Instant,
     ) -> Result<(), Error> {
         // if last request was more than 1sec ago => drop configured state
         if timestamp >= (self.timestamp + 100.millis()) && self.configured {
@@ -68,7 +68,7 @@ impl Secondary {
         let evt = self.i2c.next();
         #[cfg(feature = "debug")]
         if let Some(evt) = &evt {
-            defmt::info!("Inter: {}", defmt::Debug2Format(evt));
+            defmt::info!("Inter: {}", evt);
         }
         match evt {
             None => {

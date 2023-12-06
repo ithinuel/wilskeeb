@@ -25,7 +25,7 @@ use rp2040_hal::{
 };
 use usb_device::device::UsbDeviceState;
 
-use crate::{read_side, utils_time, ScannedEventStack, Source, TimerInstant, ToUSBStack};
+use crate::{read_side, utils_time, Instant, ScannedEventStack, Source, ToUSBStack};
 
 use self::{main::Main, secondary::Secondary};
 mod main;
@@ -60,8 +60,11 @@ pub enum Error {
     BusError(rp2040_hal::i2c::Error),
     QueueFull,
 }
-
-#[cfg(feature = "debug")]
+impl From<rp2040_hal::i2c::Error> for Error {
+    fn from(err: rp2040_hal::i2c::Error) -> Self {
+        Error::BusError(err)
+    }
+}
 impl defmt::Format for Error {
     fn format(&self, fmt: defmt::Formatter) {
         use embedded_hal_async::i2c::Error as _;
@@ -72,22 +75,11 @@ impl defmt::Format for Error {
             Self::QueueFull => defmt::write!(fmt, "QueueFull"),
             Self::BusError(err) => match err {
                 Error::Abort(_) => {
-                    defmt::write!(fmt, "BusError(Abort({}))", defmt::Debug2Format(&err.kind()))
+                    defmt::write!(fmt, "BusError(Abort({}))", err.kind())
                 }
                 err => defmt::write!(fmt, "BusError({})", err),
             },
         }
-    }
-}
-#[cfg(not(feature = "debug"))]
-impl defmt::Format for Error {
-    fn format(&self, _fmt: defmt::Formatter) {
-        unimplemented!()
-    }
-}
-impl From<rp2040_hal::i2c::Error> for Error {
-    fn from(err: rp2040_hal::i2c::Error) -> Self {
-        Error::BusError(err)
     }
 }
 
@@ -119,7 +111,7 @@ impl<'clk> InterBoard<'clk> {
         i2c_block: pac::I2C0,
         (sda, scl): Pins,
         mut resets: pac::RESETS,
-        timestamp: TimerInstant,
+        timestamp: Instant,
     ) -> Self {
         Self {
             state: Secondary::new(i2c_block, (sda, scl), &mut resets, timestamp).into(),
@@ -141,6 +133,10 @@ impl<'clk> InterBoard<'clk> {
             system_clock,
             side,
         } = self;
+        let poll_side = match side {
+            Source::Left => Source::Right,
+            Source::Right => Source::Left,
+        };
         let timestamp = timer.get_counter();
         state = match state {
             State::Main(mut main) => {
@@ -149,7 +145,7 @@ impl<'clk> InterBoard<'clk> {
                     defmt::info!("Inter: USB nolonger configured, switching back to secondary");
                     Secondary::new(i2c_block, pins, &mut resets, timestamp).into()
                 } else {
-                    let (state, delay) = match main.poll(to_usb, timer, !side).await {
+                    let (state, delay) = match main.poll(to_usb, timer, poll_side).await {
                         Ok(_) => (main.into(), 1_000.micros()),
                         Err(_e) => {
                             defmt::info!("Inter: Main::poll error: {}", _e);
