@@ -4,12 +4,12 @@
 #![feature(impl_trait_in_assoc_type)]
 
 cfg_if::cfg_if! {
-    if #[cfg(all(feature = "default", feature = "debug"))] {
-            compile_error!("Default features must be disabled while building with debug support");
-    } else if #[cfg(feature = "default")] {
+    if #[cfg(all(feature = "panic-reset", feature = "debug"))] {
+            compile_error!("panic-reset must be disabled while building with debug support");
+    } else if #[cfg(feature = "panic-reset")] {
         use panic_reset as _;
     } else if #[cfg(not(feature = "debug"))] {
-        compile_error!("Either default or one of the debug features should be enabled.");
+        compile_error!("Either panic-reset or one of the debug features should be enabled.");
     }
 }
 
@@ -196,7 +196,8 @@ async fn inter_board_app(
 #[sparkfun_pro_micro_rp2040::entry]
 fn main() -> ! {
     #[cfg(feature = "ui")]
-    static mut CORE1_STACK: rp2040_hal::multicore::Stack<40960> =
+    // reserve 160KiB for core1's stack
+    static mut CORE1_STACK: rp2040_hal::multicore::Stack<{ 160 * 1024 / 4 }> =
         rp2040_hal::multicore::Stack::new();
     cfg_if::cfg_if!(if #[cfg(feature = "ui")] {
         static BOARD: BlackBoard = BlackBoard::new();

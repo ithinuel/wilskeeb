@@ -33,7 +33,7 @@ use hal::{
 
 use crate::utils_time;
 
-mod widget;
+//mod widget;
 
 pub const ADDRESS: SevenBitAddress = 0x3C;
 trait ValidBus: sh1107::WriteIter<SevenBitAddress> {}
