@@ -63,7 +63,6 @@ use fugit::{ExtU32, HertzU32, MicrosDurationU32, TimerInstantU64};
 
 use rp2040_hal::{
     gpio::{bank0, FunctionNull, Pin, Pins, PullDown},
-    multicore::{Multicore, Stack},
     pac,
     sio::Sio,
     timer::Timer,
@@ -89,9 +88,11 @@ use keyberon::{
 mod inter_board;
 mod layout;
 mod matrix;
-mod ui;
 mod utils_async;
 mod utils_time;
+
+#[cfg(feature = "ui")]
+mod ui;
 
 use layout::CustomAction;
 
@@ -276,27 +277,26 @@ async fn usb_app<'a>(
         is_main_half,
         ..
     } = board;
-    let builder = || {
-        let builder = UsbDeviceBuilder::new(usb_bus, VID_PID)
-            .supports_remote_wakeup(true)
-            .device_class(0)
-            .device_sub_class(0)
-            .device_protocol(0)
-            .usb_rev(UsbRev::Usb200)
-            .device_release(DEVICE_RELEASE)
-            .strings(&[StringDescriptors::default()
-                .manufacturer("Ithinuel.me")
-                .product("WilsKeeb")
-                .serial_number("Dev Environment")])
-            .and_then(|builder| builder.max_packet_size_0(64))
-            .and_then(|builder| builder.max_power(500));
-        #[cfg(feature = "cli")]
-        let builder = builder.map(|builder| builder.composite_with_iads());
-        builder
+
+    let Ok(usb_builder) = UsbDeviceBuilder::new(usb_bus, VID_PID)
+        .supports_remote_wakeup(true)
+        .device_class(0)
+        .device_sub_class(0)
+        .device_protocol(0)
+        .usb_rev(UsbRev::Usb200)
+        .device_release(DEVICE_RELEASE)
+        .strings(&[StringDescriptors::default()
+            .manufacturer("Ithinuel.me")
+            .product("WilsKeeb")
+            .serial_number("Dev Environment")])
+        .and_then(|builder| builder.max_packet_size_0(64))
+        .and_then(|builder| builder.max_power(500))
+    else {
+        panic!("Failed to configure UsbDeviceBuilder");
     };
-    let mut usb_dev = builder()
-        .expect("Failed to configure UsbDeviceBuilder")
-        .build();
+    #[cfg(feature = "cli")]
+    let mut builder = builder.composite_with_iads();
+    let mut usb_dev = usb_builder.build();
 
     let mut layout = Layout::new(&layout::LAYERS);
     let mut timestamp = timer.get_counter_low();
@@ -397,13 +397,16 @@ async fn cli_app<'a>(
 
 #[sparkfun_pro_micro_rp2040::entry]
 fn main() -> ! {
-    static mut CORE1_STACK: Stack<40960> = Stack::new();
+    #[cfg(feature = "ui")]
+    static mut CORE1_STACK: hal::multicore::Stack<40960> = Stack::new();
     static ASBB: ABlackBoard = Mutex::new(RefCell::new(ABBInner::new()));
     let aboard = &ASBB;
 
     let mut pac = pac::Peripherals::take().unwrap();
     let _core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
+
+    #[allow(unused_mut)]
     let mut sio = Sio::new(pac.SIO);
 
     // External high-speed crystal on the pico board is 12Mhz
@@ -484,9 +487,23 @@ fn main() -> ! {
         [0; USB_SERIAL_TX_SZ],
     ));
 
-    use rp2040_hal::pio::PIOExt;
-    let (pio0, pio0sm0, pio0sm1, ..) = pac.PIO0.split(&mut pac.RESETS);
-    let (pio1, pio1sm0, ..) = pac.PIO1.split(&mut pac.RESETS);
+    #[allow(unused_mut)]
+    let (mut resets, i2c, sda, scl) = (pac.RESETS, pac.I2C0, pins.gpio0, pins.gpio1);
+    #[cfg(feature = "ui")]
+    let (
+        (pio0, pio0sm0, pio0sm1, ..),
+        (pio1, pio1sm0, ..),
+        (neopixel, led_strip),
+        (oled_sda, oled_scl),
+    ) = {
+        use rp2040_hal::pio::PIOExt;
+        (
+            pac.PIO0.split(&mut resets),
+            pac.PIO1.split(&mut resets),
+            (pins.gpio25, pins.gpio3),
+            (pins.gpio16, pins.gpio17),
+        )
+    };
 
     let mut matrix = matrix::Matrix::new(
         (
@@ -511,11 +528,6 @@ fn main() -> ! {
         rp2040_hal::rom_data::reset_to_usb_boot(0, 0);
         unreachable!()
     }
-
-    let neopixel = pins.gpio25;
-    let led_strip = pins.gpio3;
-    let (oled_sda, oled_scl) = (pins.gpio16, pins.gpio17);
-    let (resets, i2c, sda, scl) = (pac.RESETS, pac.I2C0, pins.gpio0, pins.gpio1);
 
     use nostd_async::Task;
     utils_time::init(alarm0, timer);
@@ -546,29 +558,33 @@ fn main() -> ! {
         #[cfg(feature = "debug-to-cli")]
         consumer,
     ));
-    use rp2040_hal::Clock;
-    let system_clock_freq = clocks.system_clock.freq();
 
+    #[cfg(feature = "ui")]
     // delegate ui to second core
-    let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
-    let core1 = &mut mc.cores()[1];
-    core1
-        .spawn(&mut CORE1_STACK.mem, move || {
-            defmt::trace!("Hi from the second core!");
-            let mut runtime = nostd_async::Runtime::new();
-            let mut ui_task = Task::new(ui::ui_app(
-                aboard,
-                &timer,
-                (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
-                (pio1, pio1sm0, oled_sda, oled_scl),
-                system_clock_freq,
-            ));
+    {
+        use hal::{multicore::Multicore, Clock};
+        let system_clock_freq = clocks.system_clock.freq();
 
-            let ui_hndl = ui_task.spawn(&mut runtime);
-            ui_hndl.join();
-            unreachable!("The UI task shall never end");
-        })
-        .expect("Unable to start second core's thread.");
+        let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
+        let core1 = &mut mc.cores()[1];
+        core1
+            .spawn(&mut CORE1_STACK.mem, move || {
+                defmt::trace!("Hi from the second core!");
+                let mut runtime = nostd_async::Runtime::new();
+                let mut ui_task = Task::new(ui::ui_app(
+                    aboard,
+                    &timer,
+                    (pio0, pio0sm0, neopixel, pio0sm1, led_strip),
+                    (pio1, pio1sm0, oled_sda, oled_scl),
+                    system_clock_freq,
+                ));
+
+                let ui_hndl = ui_task.spawn(&mut runtime);
+                ui_hndl.join();
+                unreachable!("The UI task shall never end");
+            })
+            .expect("Unable to start second core's thread.");
+    }
 
     let runtime = nostd_async::Runtime::new();
     let _inter_board_hndl = inter_board_task.spawn(&runtime);

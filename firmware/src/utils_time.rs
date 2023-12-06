@@ -33,9 +33,9 @@ pub fn init(alarm: Alarm0, timer: Timer) {
 fn setup_alarm(alarm: &mut Alarm0, timestamp: TimerInstant) {
     alarm.clear_interrupt();
     alarm.enable_interrupt();
-    alarm
-        .schedule_at(timestamp)
-        .expect("Failed to schedule next alarm");
+    if let Err(_) = alarm.schedule_at(timestamp) {
+        panic!("Failed to schedule next alarm");
+    }
 }
 fn enqueue_waker(cx: &Context, timestamp: TimerInstant) {
     let core = rp2040_hal::sio::Sio::core();
@@ -54,9 +54,9 @@ fn enqueue_waker(cx: &Context, timestamp: TimerInstant) {
             .unwrap_or_else(|| waker_vec.len());
 
         // Add us in there.
-        waker_vec
-            .insert(idx, (timestamp, cx.waker().clone(), core))
-            .expect("Unable to add waker to the wait list");
+        if let Err(_) = waker_vec.insert(idx, (timestamp, cx.waker().clone(), core)) {
+            panic!("Unable to add waker to the wait list");
+        }
 
         // if we're first in the queue, setup the alarm
         if idx == 0 {

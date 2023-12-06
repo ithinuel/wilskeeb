@@ -1,7 +1,7 @@
 use core::{cell::RefCell, task::Waker};
 use critical_section::Mutex;
-use rp2040_hal::sio::CoreId;
 use rp2040_hal::pac::interrupt;
+use rp2040_hal::sio::CoreId;
 
 macro_rules! waker_handler {
     ($name:ident, $setter_name:ident, $core:path, $irq_name:ident, $clear_irq:tt) => {
@@ -38,6 +38,7 @@ waker_handler!(I2C0_IRQ, i2c0_waker_setter, CoreId::Core0, I2C0_IRQ, {
 
 // Safety: Only accessed from core 1 and nostd_async runs tasks from within an interrupt::free (on
 // the other core :o).
+#[cfg(feature = "ui")]
 waker_handler!(PIO1_WAKER, pio1_waker_setter, CoreId::Core1, PIO1_IRQ_0, {
     let pio = &rp2040_hal::pac::Peripherals::steal().PIO1;
     pio.sm_irq[0].irq_inte.modify(|_, w| {
