@@ -13,7 +13,7 @@ name = "adafruit-featherwing-oled128x64"
 version = "0.1.0"
 dependencies = [
  "embedded-graphics 0.8.1",
- "embedded-hal 1.0.0-rc.1",
+ "embedded-hal 1.0.0-rc.3",
  "embedded-hal-async",
  "itertools 0.11.0",
  "sh1107",
@@ -491,31 +491,37 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2894bc2f0457b8ca3d6b8ab8aad64d9337583672494013457f86c5a9146c0e22"
+checksum = "bc402f79e1fd22731ca945b4f97b5ff37e7b3f379312595c42bb2e8811c29920"
 dependencies = [
  "defmt",
 ]
 
 [[package]]
 name = "embedded-hal-async"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a8a3517745342155b3b00895a0f78417a453fb800d97a8bf4777d5720acde9"
+checksum = "fa1fba2ef2ffb35d614acc6fb323ddf7facc45c069f24544d49ea54e5043626d"
 dependencies = [
- "embedded-hal 1.0.0-rc.1",
+ "embedded-hal 1.0.0-rc.3",
 ]
 
 [[package]]
 name = "embedded-hal-nb"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "257e3bb0163c69195acb0ebe0083b017b963235861d5ea9741626abdc55f39c9"
+checksum = "3cde58312a0675b6c0389eb0dceb2bf8c735a697b0b5baa1f23bbaf030636deb"
 dependencies = [
- "embedded-hal 1.0.0-rc.1",
+ "embedded-hal 1.0.0-rc.3",
  "nb 1.1.0",
 ]
+
+[[package]]
+name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
 name = "embedded-layout"
@@ -791,7 +797,7 @@ version = "1.0.0-rc.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab53b9c1d2437b1bee03faabec9554ac3800d5e004e85255decc3eac78a0e3b1"
 dependencies = [
- "embedded-hal 1.0.0-rc.1",
+ "embedded-hal 1.0.0-rc.3",
  "embedded-hal-async",
 ]
 
@@ -1492,7 +1498,7 @@ dependencies = [
 name = "rp2040-async-i2c"
 version = "0.1.0"
 dependencies = [
- "embedded-hal 1.0.0-rc.1",
+ "embedded-hal 1.0.0-rc.3",
  "embedded-hal-async",
  "fugit",
  "i2c-write-iter",
@@ -1520,10 +1526,13 @@ dependencies = [
  "defmt",
  "embedded-dma",
  "embedded-hal 0.2.7",
- "embedded-hal 1.0.0-rc.1",
+ "embedded-hal 1.0.0-rc.3",
+ "embedded-hal-async",
  "embedded-hal-nb",
+ "embedded-io",
  "frunk",
  "fugit",
+ "i2c-write-iter",
  "itertools 0.10.5",
  "nb 1.1.0",
  "paste",
@@ -1548,8 +1557,6 @@ dependencies = [
 [[package]]
 name = "rp2040-pac"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12d9d8375815f543f54835d01160d4e47f9e2cae75f17ff8f1ec19ce1da96e4c"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -1929,7 +1936,7 @@ dependencies = [
  "either",
  "embedded-graphics 0.8.1",
  "embedded-graphics-simulator",
- "embedded-hal 1.0.0-rc.1",
+ "embedded-hal 1.0.0-rc.3",
  "embedded-hal-async",
  "embedded-layout",
  "embedded-time",

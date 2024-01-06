@@ -24,7 +24,7 @@ macro_rules! waker_handler {
 }
 
 // Safety: Only accessed from core 0 and nostd_async runs tasks from within an interrupt::free.
-waker_handler!(I2C0_IRQ, i2c0_waker_setter, CoreId::Core0, I2C0_IRQ, {
+waker_handler!(I2C0_IRQ, i2c0_on_pending, CoreId::Core0, I2C0_IRQ, {
     let i2c0 = unsafe { &rp2040_hal::pac::Peripherals::steal().I2C0 };
     i2c0.ic_intr_mask.modify(|_, w| {
         w.m_tx_abrt()
@@ -35,6 +35,10 @@ waker_handler!(I2C0_IRQ, i2c0_waker_setter, CoreId::Core0, I2C0_IRQ, {
             .enabled()
     });
 });
+/// Not strictly required but still good practice.
+pub fn i2c0_on_cancel() {
+    critical_section::with(|cs| *I2C0_IRQ.borrow_ref_mut(cs) = None);
+}
 
 // Safety: Only accessed from core 1 and nostd_async runs tasks from within an interrupt::free (on
 // the other core :o).

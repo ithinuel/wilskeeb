@@ -262,8 +262,8 @@ fn main() -> ! {
     // GPIO29: right_nleft: high = right half
 
     use embedded_hal::digital::InputPin;
-    let pin = pins.gpio29.into_pull_up_input(); // setup pull-up input
-                                                // give a little bit of time for the pull-up to do its job.
+    let mut pin = pins.gpio29.into_pull_up_input(); // setup pull-up input
+                                                    // give a little bit of time for the pull-up to do its job.
     cortex_m::asm::delay(500);
     let is_right = pin.is_high().unwrap_or_else(|_| unreachable!()); // Cannot fail
     pin.into_pull_down_disabled(); // reset the pin to its default status.
