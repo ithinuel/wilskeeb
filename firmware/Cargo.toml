@@ -123,4 +123,4 @@ sparkfun-pro-micro-rp2040 = { path = "../vendor/boards/boards/sparkfun-pro-micro
 ws2812-pio = { path = "../vendor/ws2812-pio-rs" }
 usbd-human-interface-device = { path = "../vendor/usbd-human-interface-device" }
 usbd-serial = { path = "../vendor/usbd-serial" }
-rp2040-pac = { path = "../../rp2040-pac" }
+#rp2040-pac = { path = "../../rp2040-pac" }
