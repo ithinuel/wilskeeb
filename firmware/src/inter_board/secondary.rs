@@ -1,11 +1,14 @@
 use fugit::ExtU32;
-use rp2040_hal::{i2c::peripheral::I2CEvent, pac};
+use rp2040_hal::{
+    i2c::{peripheral::Event, Peripheral},
+    pac,
+};
 
 use crate::Instant;
 
 use super::Error;
 
-type I2CPeriph = rp2040_hal::i2c::peripheral::I2CPeripheralEventIterator<pac::I2C0, super::Pins>;
+type I2CPeriph = rp2040_hal::i2c::I2C<pac::I2C0, super::Pins, Peripheral>;
 
 pub struct Secondary {
     i2c: I2CPeriph,
@@ -65,7 +68,7 @@ impl Secondary {
         }
 
         // serve any pending request.
-        let evt = self.i2c.next();
+        let evt = self.i2c.next_event();
         #[cfg(feature = "debug")]
         if let Some(evt) = &evt {
             defmt::info!("Inter: {}", evt);
@@ -84,11 +87,11 @@ impl Secondary {
                     return Err(Error::BusIdle);
                 }
             }
-            Some(_e @ (I2CEvent::Start | I2CEvent::Restart)) => {
+            Some(_e @ (Event::Start | Event::Restart)) => {
                 self.start_ts = Some(timestamp);
                 self.transaction_start = true;
             }
-            Some(I2CEvent::TransferWrite) => {
+            Some(Event::TransferWrite) => {
                 let mut byte = 0;
                 if self.i2c.read(core::slice::from_mut(&mut byte)) == 1 {
                     if self.transaction_start {
@@ -128,7 +131,7 @@ impl Secondary {
                     }
                 }
             }
-            Some(I2CEvent::TransferRead) => {
+            Some(Event::TransferRead) => {
                 match self.ptr {
                     0x00..=0x10 => {
                         let v: arrayvec::ArrayVec<u8, 16> = scanned
@@ -156,7 +159,7 @@ impl Secondary {
                     }
                 };
             }
-            Some(I2CEvent::Stop) => {
+            Some(Event::Stop) => {
                 self.timestamp = timestamp;
                 self.start_ts = None;
             }

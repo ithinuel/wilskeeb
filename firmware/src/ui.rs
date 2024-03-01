@@ -36,8 +36,8 @@ use crate::utils_time;
 //mod widget;
 
 pub const ADDRESS: SevenBitAddress = 0x3C;
-trait ValidBus: sh1107::WriteIter<SevenBitAddress> {}
-impl<T: sh1107::WriteIter<SevenBitAddress>> ValidBus for T {}
+trait ValidBus: sh1107::I2cIter<SevenBitAddress> {}
+impl<T: sh1107::I2cIter<SevenBitAddress>> ValidBus for T {}
 
 type Display<T> = BufferedDisplay<T, { ADDRESS }>;
 enum UIStateMachine {
@@ -206,7 +206,7 @@ pub(crate) async fn ui_app(
     system_clock_freq: HertzU32,
 ) {
     let (mut pio1, pio1sm0, sda, scl) = oled;
-    let mut oled_display = rp2040_async_i2c::pio::I2C::new(
+    let mut oled_display = rp2040_async_i2c::I2C::new(
         &mut pio1,
         sda,
         scl,

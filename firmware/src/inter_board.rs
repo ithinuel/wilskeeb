@@ -28,7 +28,7 @@ use usb_device::device::UsbDeviceState;
 use crate::{read_side, utils_time, Instant, ScannedEventStack, Source, ToUSBStack};
 
 use self::{main::Main, secondary::Secondary};
-mod main;
+pub mod main;
 mod secondary;
 
 type Pins = (

@@ -109,7 +109,7 @@ static IS_RIGHT: AtomicBool = AtomicBool::new(false);
 
 defmt::timestamp!("{=u32:us}", {
     // NOTE(interrupt-safe) single instruction volatile read operation
-    unsafe { pac::Peripherals::steal().TIMER.timerawl.read().bits() }
+    unsafe { pac::Peripherals::steal().TIMER.timerawl().read().bits() }
 });
 
 /// Detects which keyboard half we are running.

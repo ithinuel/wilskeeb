@@ -1,10 +1,7 @@
 use embedded_hal_async::i2c::I2c;
 use fugit::ExtU32;
 use futures::FutureExt;
-use rp2040_hal::{
-    i2c::{Async, Controller},
-    pac, Clock,
-};
+use rp2040_hal::{i2c::Controller, pac, Clock};
 
 use crate::{
     inter_board::{ADDRESS, COLUMN_COUNT},
@@ -14,10 +11,10 @@ use crate::{
 use super::{Error, Pins, INTER_BOARD_FREQ};
 
 use super::EventWrapper;
-
+pub type I2C = rp2040_hal::i2c::I2C<pac::I2C0, Pins, Controller>;
 struct Timeout;
 pub struct Main {
-    i2c: rp2040_hal::i2c::I2C<pac::I2C0, Pins, Controller<Async>>,
+    i2c: I2C,
     attached: bool,
 }
 #[cfg(feature = "debug")]
@@ -34,7 +31,7 @@ impl Main {
         resets: &mut pac::RESETS,
         system_clock: &rp2040_hal::clocks::SystemClock,
     ) -> Self {
-        let mut i2c = rp2040_hal::i2c::I2C::new_async_controller(
+        let i2c = rp2040_hal::i2c::I2C::new_controller(
             i2c_block,
             sda,
             scl,
@@ -42,8 +39,6 @@ impl Main {
             resets,
             system_clock.freq(),
         );
-        i2c.set_on_pending(crate::utils_async::i2c0_on_pending);
-        i2c.set_on_cancel(crate::utils_async::i2c0_on_cancel);
         unsafe {
             rp2040_hal::pac::NVIC::unpend(rp2040_hal::pac::Interrupt::I2C0_IRQ);
             rp2040_hal::pac::NVIC::unmask(rp2040_hal::pac::Interrupt::I2C0_IRQ);

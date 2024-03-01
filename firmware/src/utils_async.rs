@@ -24,20 +24,10 @@ macro_rules! waker_handler {
 }
 
 // Safety: Only accessed from core 0 and nostd_async runs tasks from within an interrupt::free.
-waker_handler!(I2C0_IRQ, i2c0_on_pending, CoreId::Core0, I2C0_IRQ, {
-    let i2c0 = unsafe { &rp2040_hal::pac::Peripherals::steal().I2C0 };
-    i2c0.ic_intr_mask.modify(|_, w| {
-        w.m_tx_abrt()
-            .enabled()
-            .m_tx_empty()
-            .enabled()
-            .m_rx_full()
-            .enabled()
-    });
-});
-/// Not strictly required but still good practice.
-pub fn i2c0_on_cancel() {
-    critical_section::with(|cs| *I2C0_IRQ.borrow_ref_mut(cs) = None);
+#[interrupt]
+fn I2C0_IRQ() {
+    use rp2040_hal::async_utils::AsyncPeripheral;
+    crate::inter_board::main::I2C::on_interrupt();
 }
 
 // Safety: Only accessed from core 1 and nostd_async runs tasks from within an interrupt::free (on
@@ -45,7 +35,7 @@ pub fn i2c0_on_cancel() {
 #[cfg(feature = "ui")]
 waker_handler!(PIO1_WAKER, pio1_waker_setter, CoreId::Core1, PIO1_IRQ_0, {
     let pio = &rp2040_hal::pac::Peripherals::steal().PIO1;
-    pio.sm_irq[0].irq_inte.modify(|_, w| {
+    pio.sm_irq(0).irq_inte().modify(|_, w| {
         w.sm0()
             .clear_bit()
             .sm0_txnfull()
